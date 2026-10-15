@@ -50,12 +50,6 @@
         {
           "iCloudContainerEnvironment": "Production"
         }
-      ],
-      [
-        "expo-av",
-        {
-          "microphonePermission": "Gruup needs microphone access to let you record voice messages."
-        }
       ]
     ],
     "extra": {

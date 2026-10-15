@@ -2,44 +2,57 @@
  * src/services/supabase.ts
  *
  * Initialises and exports the singleton Supabase client.
- * - Uses expo-secure-store for secure token persistence on device.
- * - Imports react-native-url-polyfill so the URL global works correctly
- *   inside the React Native JS engine.
+ * Guarded against missing / invalid environment variables so
+ * the app never crashes at startup.
  */
 
 import 'react-native-url-polyfill/auto';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
-import { createClient } from '@supabase/supabase-js';
-import * as SecureStore from 'expo-secure-store';
+const rawUrl = process.env.EXPO_PUBLIC_SUPABASE_URL?.trim();
+const rawKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY?.trim();
 
-const SUPABASE_URL =
-  process.env.EXPO_PUBLIC_SUPABASE_URL ||
-  'https://llkxyzuigignxdstmyxd.supabase.co';
+const isValidUrl = Boolean(rawUrl && rawUrl.startsWith('https://'));
+if (!isValidUrl) {
+  console.warn(
+    '[Supabase] Warning: EXPO_PUBLIC_SUPABASE_URL is missing or invalid. Falling back to default URL to prevent startup crash.',
+  );
+}
+
+const SUPABASE_URL = isValidUrl
+  ? (rawUrl as string)
+  : 'https://llkxyzuigignxdstmyxd.supabase.co';
+
 const SUPABASE_ANON =
-  process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ||
+  rawKey ||
   'sb_publishable_bydJi44VbEsIschzzvXnpA_qOZD5fP9';
 
-/* ---------- Secure-store backed storage adapter ---------- */
+/* ---------- Safe Singleton Creation ---------- */
 
-const ExpoSecureStoreAdapter = {
-  getItem: (key: string): Promise<string | null> => {
-    return SecureStore.getItemAsync(key);
-  },
-  setItem: (key: string, value: string): Promise<void> => {
-    return SecureStore.setItemAsync(key, value);
-  },
-  removeItem: (key: string): Promise<void> => {
-    return SecureStore.deleteItemAsync(key);
-  },
-};
+let clientInstance: SupabaseClient;
 
-/* ---------- Client ---------- */
+try {
+  clientInstance = createClient(SUPABASE_URL, SUPABASE_ANON, {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+      detectSessionInUrl: false,
+    },
+  });
+} catch (error) {
+  console.error('[Supabase] Failed to initialize Supabase client:', error);
+  // Emergency fallback so the app continues booting to show the UI/ErrorBoundary
+  clientInstance = createClient(
+    'https://placeholder.supabase.co',
+    'placeholder-key',
+    {
+      auth: {
+        persistSession: false,
+        autoRefreshToken: false,
+        detectSessionInUrl: false,
+      },
+    },
+  );
+}
 
-export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON, {
-  auth: {
-    storage: ExpoSecureStoreAdapter,
-    autoRefreshToken: true,
-    persistSession: true,
-    detectSessionInUrl: false, // not applicable on native
-  },
-});
+export const supabase = clientInstance;
