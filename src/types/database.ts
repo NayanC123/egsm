@@ -45,6 +45,7 @@ export interface UserProfile {
   status: AccountStatus;
   mute_status: MuteStatus;
   suspended_until: string | null; // ISO-8601 timestamp or null
+  muted_until?: string | null;    // ISO-8601 timestamp or null
   created_at: string;            // ISO-8601 timestamp
   updated_at: string;            // ISO-8601 timestamp
 }

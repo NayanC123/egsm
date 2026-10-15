@@ -44,6 +44,7 @@ import * as ImagePicker from 'expo-image-picker';
 import * as DocumentPicker from 'expo-document-picker';
 import { Audio, Video, ResizeMode } from 'expo-av';
 import { useAuth } from '../../context/AuthContext';
+import { useSpamLimiter } from '../../hooks/useSpamLimiter';
 import { useTheme } from '../../theme/ThemeContext';
 import { supabase } from '../../services/supabase';
 import { uploadChatMedia } from '../../services/storage';
@@ -65,7 +66,15 @@ import { PinnedMessagesBar } from '../../components/Chat/PinnedMessagesBar';
 export const GroupChatScreen: React.FC = () => {
   const { theme } = useTheme();
   const { colors } = theme;
-  const { user } = useAuth();
+  const { user, refreshProfile } = useAuth();
+
+  // Spam Limitation Engine (Sliding-window rate limits, tiered mutes, duplicates, media cap)
+  const spamLimiter = useSpamLimiter({
+    userProfile: user,
+    onHardMuteTriggered: () => {
+      refreshProfile();
+    },
+  });
 
   // Chat messages state (ordered newest first for inverted FlatList)
   const [messages, setMessages] = useState<ChatMessageWithSender[]>([]);
@@ -89,10 +98,6 @@ export const GroupChatScreen: React.FC = () => {
   const [isRecording, setIsRecording] = useState(false);
   const [recordingDurationSec, setRecordingDurationSec] = useState(0);
   const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  // Spam rate-limiting state
-  const recentMessageTimestamps = useRef<number[]>([]);
-  const lastSentContent = useRef<string>('');
 
   // Supabase Realtime channel ref
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
@@ -272,59 +277,7 @@ export const GroupChatScreen: React.FC = () => {
   }, [loadMessages]);
 
   /* ------------------------------------------------------------------ */
-  /*  Spam / Rate-Limit Check                                            */
-  /* ------------------------------------------------------------------ */
-
-  const checkRateLimits = (text?: string): boolean => {
-    if (user?.mute_status && user.mute_status !== 'none') {
-      Alert.alert(
-        'Muted from Chat',
-        'You have been muted from sending messages in the group chat.',
-      );
-      return false;
-    }
-
-    if (user?.status === 'suspended') {
-      Alert.alert('Suspended', 'Your account is currently suspended.');
-      return false;
-    }
-
-    const now = Date.now();
-    // Sliding 5-second burst window
-    recentMessageTimestamps.current = recentMessageTimestamps.current.filter(
-      (t) => now - t < 5000,
-    );
-
-    if (recentMessageTimestamps.current.length >= 5) {
-      Alert.alert(
-        'Slow Down!',
-        'You are sending messages too fast (burst limit: 5 messages in 5s). Please pause for a few seconds.',
-      );
-      return false;
-    }
-
-    // Duplicate detection
-    if (
-      text &&
-      text.trim().length > 3 &&
-      text.trim().toLowerCase() === lastSentContent.current.trim().toLowerCase()
-    ) {
-      Alert.alert(
-        'Duplicate Message',
-        'Please avoid spamming identical messages in chat.',
-      );
-      return false;
-    }
-
-    recentMessageTimestamps.current.push(now);
-    if (text) {
-      lastSentContent.current = text;
-    }
-    return true;
-  };
-
-  /* ------------------------------------------------------------------ */
-  /*  Send Message Handler                                               */
+  /*  Send Message Handler (Validated against useSpamLimiter)            */
   /* ------------------------------------------------------------------ */
 
   const handleSendMessage = async (payload: {
@@ -338,7 +291,17 @@ export const GroupChatScreen: React.FC = () => {
       return;
     }
 
-    if (!checkRateLimits(payload.content || undefined)) {
+    if (user?.status === 'suspended') {
+      Alert.alert('Suspended', 'Your account is currently suspended.');
+      return;
+    }
+
+    // 1. Validate against useSpamLimiter (Server mute, Hard/Soft mute, Duplicate, Media cap)
+    const valResult = spamLimiter.validateBeforeSend(
+      payload.content || undefined,
+      payload.message_type,
+    );
+    if (!valResult.allowed) {
       return;
     }
 
@@ -362,6 +325,12 @@ export const GroupChatScreen: React.FC = () => {
       if (error || !data) {
         throw new Error(error?.message || 'Failed to send message.');
       }
+
+      // 2. Record send to enforce rate limit tiers (Warnings, Soft/Hard Mute, Media cooldown)
+      await spamLimiter.recordMessageSent({
+        content: payload.content || null,
+        message_type: payload.message_type,
+      });
 
       setInputText('');
       setIsAttachMenuOpen(false);
@@ -439,11 +408,18 @@ export const GroupChatScreen: React.FC = () => {
   };
 
   const uploadAndSendAsset = async (asset: ImagePicker.ImagePickerAsset) => {
+    const isVideo =
+      asset.type === 'video' ||
+      (asset.mimeType && asset.mimeType.startsWith('video/'));
+    const messageType: MessageType = isVideo ? 'video' : 'photo';
+
+    const valResult = spamLimiter.validateBeforeSend(undefined, messageType);
+    if (!valResult.allowed) {
+      return;
+    }
+
     try {
       setIsSending(true);
-      const isVideo =
-        asset.type === 'video' ||
-        (asset.mimeType && asset.mimeType.startsWith('video/'));
 
       const ext = isVideo ? 'mp4' : 'jpg';
       const fileName =
@@ -480,6 +456,21 @@ export const GroupChatScreen: React.FC = () => {
 
   const handlePickDocument = async () => {
     setIsAttachMenuOpen(false);
+    if (spamLimiter.isMediaCooldownActive) {
+      Alert.alert(
+        'Media Cooldown',
+        `Media attachment limit reached. Please wait ${spamLimiter.mediaCooldownRemainingSeconds}s before attaching more documents or media.`,
+      );
+      return;
+    }
+    if (spamLimiter.isComposerLocked) {
+      return;
+    }
+    const valResult = spamLimiter.validateBeforeSend(undefined, 'document');
+    if (!valResult.allowed) {
+      return;
+    }
+
     try {
       const result = await DocumentPicker.getDocumentAsync({
         type: '*/*',
@@ -524,6 +515,16 @@ export const GroupChatScreen: React.FC = () => {
       // Finish and send
       await handleStopAndSendVoice();
     } else {
+      if (spamLimiter.isMediaCooldownActive) {
+        Alert.alert(
+          'Media Cooldown',
+          `Media attachment limit reached. Please wait ${spamLimiter.mediaCooldownRemainingSeconds}s before sending voice notes.`,
+        );
+        return;
+      }
+      if (spamLimiter.isComposerLocked) {
+        return;
+      }
       // Start recording
       await handleStartVoiceRecord();
     }
@@ -573,6 +574,12 @@ export const GroupChatScreen: React.FC = () => {
 
     const duration = recordingDurationSec;
     setIsRecording(false);
+
+    const valResult = spamLimiter.validateBeforeSend(undefined, 'voice');
+    if (!valResult.allowed) {
+      await handleCancelVoiceRecord();
+      return;
+    }
 
     try {
       await recording.stopAndUnloadAsync();
@@ -636,6 +643,11 @@ export const GroupChatScreen: React.FC = () => {
   const handleCreatePoll = async (question: string, options: string[]) => {
     if (!user) return;
 
+    const valResult = spamLimiter.validateBeforeSend(question, 'poll');
+    if (!valResult.allowed) {
+      return;
+    }
+
     // 1. Insert message with message_type = 'poll'
     const { data: msgData, error: msgErr } = await supabase
       .from('messages')
@@ -663,6 +675,11 @@ export const GroupChatScreen: React.FC = () => {
     if (pollErr) {
       throw new Error(pollErr.message);
     }
+
+    await spamLimiter.recordMessageSent({
+      content: question,
+      message_type: 'poll',
+    });
 
     loadMessages();
   };
@@ -1130,11 +1147,50 @@ export const GroupChatScreen: React.FC = () => {
         )}
 
         {/* Account Muted / Suspended Warning Banner */}
-        {user?.mute_status && user.mute_status !== 'none' && (
-          <View style={styles.mutedBanner}>
-            <Text style={styles.mutedBannerText}>
-              🔇 You are muted from participating in the group chat.
+        {/* Tier 1 Warning Toast */}
+        {spamLimiter.isWarningToastVisible && (
+          <View style={styles.warningToast}>
+            <Text style={styles.warningToastIcon}>⚠️</Text>
+            <Text style={styles.warningToastText}>
+              Slow down! Sending messages too fast.
             </Text>
+            {spamLimiter.warningRemainingSeconds > 0 && (
+              <View style={styles.warningToastPill}>
+                <Text style={styles.warningToastPillText}>
+                  {spamLimiter.warningRemainingSeconds}s
+                </Text>
+              </View>
+            )}
+          </View>
+        )}
+
+        {/* Server / Admin Mute or Tier 3 Hard Mute Countdown Banner */}
+        {spamLimiter.isMuted && (
+          <View style={styles.mutedCountdownBanner}>
+            <Text style={styles.mutedCountdownIcon}>🔇</Text>
+            <View style={styles.mutedCountdownContent}>
+              <Text style={styles.mutedCountdownTitle}>
+                {spamLimiter.serverMuteCountdownText}
+              </Text>
+              <Text style={styles.mutedCountdownSubtitle}>
+                Sending messages and media is temporarily disabled.
+              </Text>
+            </View>
+          </View>
+        )}
+
+        {/* Tier 2 Soft Mute Banner with live second-by-second countdown */}
+        {spamLimiter.isSoftMuted && !spamLimiter.isMuted && (
+          <View style={styles.softMuteBanner}>
+            <Text style={styles.softMuteIcon}>⏳</Text>
+            <View style={styles.softMuteContent}>
+              <Text style={styles.softMuteTitle}>
+                Chat composer locked ({spamLimiter.softMuteRemainingSeconds}s)
+              </Text>
+              <Text style={styles.softMuteSubtitle}>
+                Soft mute active. Live countdown in progress...
+              </Text>
+            </View>
           </View>
         )}
 
@@ -1188,9 +1244,22 @@ export const GroupChatScreen: React.FC = () => {
               },
             ]}
           >
+            {/* Camera */}
             <Pressable
-              onPress={() => handlePickMedia('camera')}
-              style={styles.attachMenuItem}
+              onPress={() => {
+                if (spamLimiter.isMediaCooldownActive) {
+                  Alert.alert(
+                    'Media Cooldown',
+                    `Media attachment limit reached. Please wait ${spamLimiter.mediaCooldownRemainingSeconds}s.`,
+                  );
+                  return;
+                }
+                handlePickMedia('camera');
+              }}
+              style={[
+                styles.attachMenuItem,
+                spamLimiter.isMediaCooldownActive && styles.attachMenuItemDisabled,
+              ]}
             >
               <View style={[styles.attachIconCircle, { backgroundColor: '#FF6600' }]}>
                 <Text style={styles.attachMenuIcon}>📷</Text>
@@ -1198,11 +1267,29 @@ export const GroupChatScreen: React.FC = () => {
               <Text style={[styles.attachMenuLabel, { color: colors.text }]}>
                 Camera
               </Text>
+              {spamLimiter.isMediaCooldownActive && (
+                <Text style={styles.attachMenuBadge}>
+                  {spamLimiter.mediaCooldownRemainingSeconds}s
+                </Text>
+              )}
             </Pressable>
 
+            {/* Photo / Video */}
             <Pressable
-              onPress={() => handlePickMedia('library')}
-              style={styles.attachMenuItem}
+              onPress={() => {
+                if (spamLimiter.isMediaCooldownActive) {
+                  Alert.alert(
+                    'Media Cooldown',
+                    `Media attachment limit reached. Please wait ${spamLimiter.mediaCooldownRemainingSeconds}s.`,
+                  );
+                  return;
+                }
+                handlePickMedia('library');
+              }}
+              style={[
+                styles.attachMenuItem,
+                spamLimiter.isMediaCooldownActive && styles.attachMenuItemDisabled,
+              ]}
             >
               <View style={[styles.attachIconCircle, { backgroundColor: '#00FFCC' }]}>
                 <Text style={styles.attachMenuIcon}>🖼️</Text>
@@ -1210,14 +1297,30 @@ export const GroupChatScreen: React.FC = () => {
               <Text style={[styles.attachMenuLabel, { color: colors.text }]}>
                 Photo / Video
               </Text>
+              {spamLimiter.isMediaCooldownActive && (
+                <Text style={styles.attachMenuBadge}>
+                  {spamLimiter.mediaCooldownRemainingSeconds}s
+                </Text>
+              )}
             </Pressable>
 
+            {/* Giphy GIF */}
             <Pressable
               onPress={() => {
+                if (spamLimiter.isMediaCooldownActive) {
+                  Alert.alert(
+                    'Media Cooldown',
+                    `Media attachment limit reached. Please wait ${spamLimiter.mediaCooldownRemainingSeconds}s.`,
+                  );
+                  return;
+                }
                 setIsAttachMenuOpen(false);
                 setIsGiphyModalVisible(true);
               }}
-              style={styles.attachMenuItem}
+              style={[
+                styles.attachMenuItem,
+                spamLimiter.isMediaCooldownActive && styles.attachMenuItemDisabled,
+              ]}
             >
               <View style={[styles.attachIconCircle, { backgroundColor: '#9933FF' }]}>
                 <Text style={styles.attachMenuIcon}>🎬</Text>
@@ -1225,11 +1328,29 @@ export const GroupChatScreen: React.FC = () => {
               <Text style={[styles.attachMenuLabel, { color: colors.text }]}>
                 Giphy GIF
               </Text>
+              {spamLimiter.isMediaCooldownActive && (
+                <Text style={styles.attachMenuBadge}>
+                  {spamLimiter.mediaCooldownRemainingSeconds}s
+                </Text>
+              )}
             </Pressable>
 
+            {/* Document */}
             <Pressable
-              onPress={handlePickDocument}
-              style={styles.attachMenuItem}
+              onPress={() => {
+                if (spamLimiter.isMediaCooldownActive) {
+                  Alert.alert(
+                    'Media Cooldown',
+                    `Media attachment limit reached. Please wait ${spamLimiter.mediaCooldownRemainingSeconds}s.`,
+                  );
+                  return;
+                }
+                handlePickDocument();
+              }}
+              style={[
+                styles.attachMenuItem,
+                spamLimiter.isMediaCooldownActive && styles.attachMenuItemDisabled,
+              ]}
             >
               <View style={[styles.attachIconCircle, { backgroundColor: '#3399FF' }]}>
                 <Text style={styles.attachMenuIcon}>📄</Text>
@@ -1237,10 +1358,17 @@ export const GroupChatScreen: React.FC = () => {
               <Text style={[styles.attachMenuLabel, { color: colors.text }]}>
                 Document
               </Text>
+              {spamLimiter.isMediaCooldownActive && (
+                <Text style={styles.attachMenuBadge}>
+                  {spamLimiter.mediaCooldownRemainingSeconds}s
+                </Text>
+              )}
             </Pressable>
 
+            {/* Poll */}
             <Pressable
               onPress={() => {
+                if (spamLimiter.isComposerLocked) return;
                 setIsAttachMenuOpen(false);
                 setIsPollModalVisible(true);
               }}
@@ -1268,7 +1396,11 @@ export const GroupChatScreen: React.FC = () => {
         >
           {/* Plus / Attach Button */}
           <Pressable
-            onPress={() => setIsAttachMenuOpen(!isAttachMenuOpen)}
+            onPress={() => {
+              if (spamLimiter.isComposerLocked) return;
+              setIsAttachMenuOpen(!isAttachMenuOpen);
+            }}
+            disabled={spamLimiter.isComposerLocked}
             style={({ pressed }) => [
               styles.attachToggleBtn,
               {
@@ -1277,7 +1409,7 @@ export const GroupChatScreen: React.FC = () => {
                   : theme.mode === 'dark'
                   ? '#1A2633'
                   : '#E2E8F0',
-                opacity: pressed ? 0.8 : 1,
+                opacity: spamLimiter.isComposerLocked ? 0.4 : pressed ? 0.8 : 1,
               },
             ]}
           >
@@ -1289,6 +1421,13 @@ export const GroupChatScreen: React.FC = () => {
             >
               {isAttachMenuOpen ? '✕' : '+'}
             </Text>
+            {spamLimiter.isMediaCooldownActive && (
+              <View style={styles.mediaCooldownBadge}>
+                <Text style={styles.mediaCooldownBadgeText}>
+                  {spamLimiter.mediaCooldownRemainingSeconds}s
+                </Text>
+              </View>
+            )}
           </Pressable>
 
           {/* Text Input */}
@@ -1299,21 +1438,43 @@ export const GroupChatScreen: React.FC = () => {
                 backgroundColor: colors.main,
                 color: colors.text,
                 borderColor: borderColor,
+                opacity: spamLimiter.isComposerLocked ? 0.5 : 1,
               },
             ]}
-            placeholder="Type a message or paste URL..."
-            placeholderTextColor={colors.muted}
+            placeholder={
+              spamLimiter.isMuted
+                ? spamLimiter.serverMuteCountdownText
+                : spamLimiter.isSoftMuted
+                ? `Chat locked (${spamLimiter.softMuteRemainingSeconds}s)...`
+                : "Type a message or paste URL..."
+            }
+            placeholderTextColor={
+              spamLimiter.isMuted
+                ? '#FF3366'
+                : spamLimiter.isSoftMuted
+                ? '#FF6600'
+                : colors.muted
+            }
             value={inputText}
             onChangeText={setInputText}
             multiline
             maxLength={1000}
-            editable={!isRecording && user?.mute_status === 'none'}
+            editable={
+              !isRecording &&
+              !spamLimiter.isComposerLocked &&
+              user?.status === 'active'
+            }
           />
 
           {/* Voice Mic Button */}
           <Pressable
             onPress={handleToggleVoiceRecord}
-            disabled={isSending || user?.mute_status !== 'none'}
+            disabled={
+              isSending ||
+              spamLimiter.isComposerLocked ||
+              spamLimiter.isMediaCooldownActive ||
+              user?.status !== 'active'
+            }
             style={({ pressed }) => [
               styles.micButton,
               {
@@ -1322,23 +1483,48 @@ export const GroupChatScreen: React.FC = () => {
                   : theme.mode === 'dark'
                   ? '#1A2633'
                   : '#E2E8F0',
-                opacity: pressed ? 0.8 : 1,
+                opacity:
+                  spamLimiter.isComposerLocked ||
+                  spamLimiter.isMediaCooldownActive ||
+                  user?.status !== 'active'
+                    ? 0.4
+                    : pressed
+                    ? 0.8
+                    : 1,
               },
             ]}
           >
             <Text style={styles.micIcon}>{isRecording ? '⏹' : '🎤'}</Text>
+            {spamLimiter.isMediaCooldownActive && (
+              <View style={styles.mediaCooldownBadge}>
+                <Text style={styles.mediaCooldownBadgeText}>
+                  {spamLimiter.mediaCooldownRemainingSeconds}s
+                </Text>
+              </View>
+            )}
           </Pressable>
 
           {/* Send Button */}
           {inputText.trim().length > 0 && (
             <Pressable
               onPress={handleSendText}
-              disabled={isSending || user?.mute_status !== 'none'}
+              disabled={
+                isSending ||
+                spamLimiter.isSendButtonLocked ||
+                user?.status !== 'active'
+              }
               style={({ pressed }) => [
                 styles.sendBtn,
                 {
-                  backgroundColor: colors.primary,
-                  opacity: pressed || isSending ? 0.7 : 1,
+                  backgroundColor: spamLimiter.isSendButtonLocked
+                    ? '#FF6600'
+                    : colors.primary,
+                  opacity:
+                    spamLimiter.isSendButtonLocked
+                      ? 0.6
+                      : pressed || isSending
+                      ? 0.7
+                      : 1,
                 },
               ]}
             >
@@ -1633,16 +1819,125 @@ const styles = StyleSheet.create({
   timestampText: {
     fontSize: 10,
   },
-  mutedBanner: {
-    backgroundColor: 'rgba(255, 51, 102, 0.2)',
-    paddingVertical: 8,
-    paddingHorizontal: 16,
+  mutedCountdownBanner: {
+    backgroundColor: '#1F0B11',
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: '#FF3366',
+    flexDirection: 'row',
     alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    gap: 12,
   },
-  mutedBannerText: {
+  mutedCountdownIcon: {
+    fontSize: 22,
+  },
+  mutedCountdownContent: {
+    flex: 1,
+  },
+  mutedCountdownTitle: {
     color: '#FF3366',
+    fontSize: 14,
+    fontWeight: '800',
+    fontVariant: ['tabular-nums'],
+  },
+  mutedCountdownSubtitle: {
+    color: '#8A9BA8',
+    fontSize: 11,
+    marginTop: 2,
+  },
+  softMuteBanner: {
+    backgroundColor: '#1E170A',
+    borderTopWidth: 1,
+    borderBottomWidth: 1,
+    borderColor: '#FF6600',
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    gap: 12,
+  },
+  softMuteIcon: {
+    fontSize: 22,
+  },
+  softMuteContent: {
+    flex: 1,
+  },
+  softMuteTitle: {
+    color: '#FF6600',
+    fontSize: 14,
+    fontWeight: '800',
+    fontVariant: ['tabular-nums'],
+  },
+  softMuteSubtitle: {
+    color: '#8A9BA8',
+    fontSize: 11,
+    marginTop: 2,
+  },
+  warningToast: {
+    backgroundColor: '#FF6600',
+    marginHorizontal: 12,
+    marginBottom: 8,
+    borderRadius: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    shadowColor: '#FF6600',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.35,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  warningToastIcon: {
+    fontSize: 16,
+  },
+  warningToastText: {
+    color: '#FFFFFF',
     fontSize: 13,
     fontWeight: '700',
+    flex: 1,
+  },
+  warningToastPill: {
+    backgroundColor: '#050A0E',
+    borderRadius: 10,
+    paddingHorizontal: 7,
+    paddingVertical: 2,
+  },
+  warningToastPillText: {
+    color: '#FF6600',
+    fontSize: 11,
+    fontWeight: '800',
+    fontVariant: ['tabular-nums'],
+  },
+  mediaCooldownBadge: {
+    position: 'absolute',
+    top: -4,
+    right: -4,
+    backgroundColor: '#FF6600',
+    borderRadius: 10,
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    minWidth: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  mediaCooldownBadgeText: {
+    color: '#050A0E',
+    fontSize: 9,
+    fontWeight: '900',
+    fontVariant: ['tabular-nums'],
+  },
+  attachMenuItemDisabled: {
+    opacity: 0.45,
+  },
+  attachMenuBadge: {
+    color: '#FF6600',
+    fontSize: 10,
+    fontWeight: '800',
+    fontVariant: ['tabular-nums'],
   },
   recordingBanner: {
     flexDirection: 'row',

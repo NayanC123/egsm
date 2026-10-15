@@ -66,8 +66,12 @@ egsm/
     │       ├── ReportOffenseModal.tsx        # Report offense modal inserting into offense_reports
     │       ├── MessageContextMenu.tsx        # Long-press sheet: Pin/Unpin, Delete message, Report offense
     │       └── PinnedMessagesBar.tsx         # Sticky collapsible header bar showing pinned chat messages
+    ├── constants/
+    │   └── rateLimits.ts                 # Sliding-window rate limit, tiers, duplicate window & media cap config
     ├── context/
     │   └── AuthContext.tsx               # AuthProvider, useAuth (custom profiles auth, realtime status, secure session)
+    ├── hooks/
+    │   └── useSpamLimiter.ts             # Spam limitation engine: sliding-window limits, countdown banners, tiers 1-3, media cooldowns
     ├── services/
     │   ├── supabase.ts                   # Supabase client init (expo-secure-store adapter, URL polyfill)
     │   └── storage.ts                    # Supabase Storage helpers (uploadPostAttachment, uploadChatMedia)
@@ -104,6 +108,8 @@ egsm/
 
 | File | Exports |
 |------|---------|
+| `src/constants/rateLimits.ts` | `RATE_LIMIT_CONFIG`, `RATE_LIMITS` (constants), `RateLimitConfig`, `RateLimits` (types) |
+| `src/hooks/useSpamLimiter.ts` | `useSpamLimiter` (default & named hook), `formatMuteDuration` (function), `UseSpamLimiterReturn`, `SpamValidateResult`, `UseSpamLimiterOptions` (interfaces) |
 | `src/context/AuthContext.tsx` | `AuthProvider` (component), `useAuth` (hook) |
 | `src/services/supabase.ts` | `supabase` (SupabaseClient instance) |
 | `src/services/storage.ts` | `uploadPostAttachment`, `uploadChatMedia` (async helper functions), `UploadedAttachment` (interface) |
@@ -266,4 +272,15 @@ Tables added to `supabase_realtime` publication: `messages`, `posts`, `post_rati
     - Account mute & suspension check disabling inputs and showing alert banner.
     - Long-press context menu on all message bubbles.
   - `src/screens/ChatScreen.tsx`: Wired to render `GroupChatScreen`.
+  - **`npx tsc --noEmit` → 0 errors ✅**
+- **[Phase 7 — Complete]**: Chat Spam Limitation Engine.
+  - `src/constants/rateLimits.ts`: Sliding-window rate limit configuration (burst 5s, sustained 60s, Warning lockout 3s, Soft Mute 30s, Hard Mute 300s, Duplicate Detection 10s max 2, Media Limits 60s max 4 with 45s cooldown).
+  - `src/hooks/useSpamLimiter.ts`: Complete sliding-window rate limit and spam protection hook.
+    - Server/Admin Mute Check: Live countdown banner "You are muted for Xm Ys" with second-by-second countdown, blocking all sends and media.
+    - Duplicate Detection: Sliding 10-second history of trimmed lowercase strings, blocking 3rd identical message and raising alert.
+    - Media / GIF Cap: Tracks media/GIFs within rolling 60s; upon exceeding 4 items, locks media/GIF attachment buttons for 45s with live cooldown badge.
+    - Tier 3 — Hard Mute: 12 in 5s OR 25 in 60s -> locks chat input for 300s AND updates `profiles.muted_until = now() + 300s` in Supabase to prevent bypass across app restarts.
+    - Tier 2 — Soft Mute: 8 in 5s OR 18 in 60s -> locks chat composer for 30s with live second-by-second countdown timer.
+    - Tier 1 — Warning: 5 in 5s OR 12 in 60s -> locks Send button for 3s and displays `#FF6600` warning toast ("Slow down! Sending messages too fast.").
+  - `src/screens/Chat/GroupChatScreen.tsx`: Fully wired against `useSpamLimiter` before sending text, photos/videos, documents, voice notes, GIFs, and polls. Displays live banners, toasts, and cooldown badges.
   - **`npx tsc --noEmit` → 0 errors ✅**

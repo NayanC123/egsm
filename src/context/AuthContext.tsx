@@ -101,6 +101,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
             : 'none'
           : 'none',
         suspended_until: data.suspended_until ?? null,
+        muted_until: data.muted_until ?? null,
         created_at: data.created_at,
         updated_at: data.created_at, // table has no updated_at; use created_at
       } as UserProfile;
@@ -264,6 +265,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({
               : 'none'
             : 'none',
           suspended_until: data.suspended_until ?? null,
+          muted_until: data.muted_until ?? null,
           created_at: data.created_at,
           updated_at: data.created_at,
         };
