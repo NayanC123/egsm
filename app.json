@@ -1,0 +1,60 @@
+{
+  "expo": {
+    "name": "Gruup",
+    "slug": "gruup",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "automatic",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.gruup.social",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Gruup needs camera access so you can take photos and videos for posts and chat.",
+        "NSMicrophoneUsageDescription": "Gruup needs microphone access so you can record voice messages.",
+        "NSPhotoLibraryUsageDescription": "Gruup needs photo library access so you can share photos and videos."
+      }
+    },
+    "android": {
+      "package": "com.gruup.social",
+      "permissions": [
+        "CAMERA",
+        "RECORD_AUDIO",
+        "READ_MEDIA_IMAGES",
+        "READ_MEDIA_VIDEO",
+        "INTERNET"
+      ],
+      "adaptiveIcon": {
+        "backgroundColor": "#050A0E",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      }
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-secure-store",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Gruup needs photo library access to let you share images.",
+          "cameraPermission": "Gruup needs camera access to let you take photos."
+        }
+      ],
+      [
+        "expo-document-picker",
+        {
+          "iCloudContainerEnvironment": "Production"
+        }
+      ],
+      [
+        "expo-av",
+        {
+          "microphonePermission": "Gruup needs microphone access to let you record voice messages."
+        }
+      ]
+    ]
+  }
+}

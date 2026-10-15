@@ -1,0 +1,148 @@
+# PROJECT_CONTEXT.md — Antigravity Single Source of Truth Log
+
+## 1. Environment & Native Compilation Rules (MANDATORY)
+- **Framework**: React Native (Expo SDK + TypeScript) targeting Native Android (`.apk`/`.aab`) and iOS (`.ipa`).
+- **Backend**: Supabase (PostgreSQL, Realtime WebSockets, Storage Buckets).
+- **STRICT NATIVE RULE**: NEVER use HTML/DOM elements (`div`, `span`, `p`, `button`, `input`, `img`, `a`), CSS files, or `window.localStorage`. Strictly use React Native primitives (`View`, `Text`, `TextInput`, `Pressable`, `FlatList`, `ScrollView`, `Image`, `Modal`, `StyleSheet`, `SafeAreaView`).
+- **Package Rule**: Always install dependencies in the terminal using `npx expo install <pkg>` so versions match the target Android/iOS Expo SDK.
+- **Self-Verification Rule**: After completing any code changes, ALWAYS run `npx tsc --noEmit` in the terminal and fix all TypeScript/JSX errors before finishing the task.
+
+## 2. Theme & Brand Palette
+- **Dark Mode (Default)**: Main `#050A0E` | Card Surface `#0D161E` | Text `#FFFFFF` | Muted `#8A9BA8`
+- **Light Mode**: Main `#F4F7F9` | Card Surface `#FFFFFF` | Text `#050A0E` | Muted `#5A6B78`
+- **Primary Neon**: `#00FFCC`
+- **Accent / Pinned Announcements**: `#FF6600`
+- **Danger / Error**: `#FF3366`
+
+## 3. Core App Specification
+1. **Pre-Login**:
+   - Username + Password login ONLY.
+   - NO public account creation / sign-up anywhere.
+   - "Forgot Password" submits a reset request for Admins to handle.
+   - Terminated (`status = 'terminated'`) and Suspended (`status = 'suspended'` with `suspended_until > now()`) accounts are blocked at login and kicked out live if status changes.
+2. **Post-Login Navigation**:
+   - Bottom Tab Selector: `Chat` | `Posts` | `Account Settings` | `Admin` (shown ONLY when `user.role === 'admin'`).
+3. **Posts & Live Leaderboard**:
+   - Posts ONCE MADE CANNOT BE DELETED (enforced in UI and PostgreSQL trigger).
+   - Viewers see Poster + Subject list, with Announcements (`is_announcement = true`) pinned at the top in `#FF6600`.
+   - Post Detail shows Subject, Poster, Content, attachments, clickable `0–10` rating buttons, ratings given by others, and Satisfaction Rate (`(AVG(score) / 10) * 100%`).
+   - Posters click `(+ New)` at the bottom -> type Subject/Text, attach photos (Camera button) or docs (Paperclip button), and click `(Post)`.
+   - Leaderboard (`Leaderboard` button at top of Posts list) shows `Rank` and `Average Satisfaction Rate (%)`. Users MUST have `>= 1` post in the rolling last 7 days or they are automatically excluded from the leaderboard. Includes `( <- Back to Main Menu)` button at the bottom.
+4. **Group Chat & Spam Limitation**:
+   - Features: Text with clickable hyperlinks, message deletion, Giphy GIFs, photos/videos, polls, voice messages, message pinning, offense reporting to admins, and documents (PDF/Audio).
+   - Enforces the exact sliding-window JSON rate limits (5s burst / 60s sustained, Warning, Soft Mute, Hard Mute, Duplicate Detection, Media/GIF Cap).
+5. **Account Settings**:
+   - Read-only Username (set by Admins), Change Display Name, Change Password, Dark/Light Mode toggle, Log Out.
+6. **Administration Portal**:
+   - Main Admin account seeded directly in DB at setup.
+   - Admins can: Create accounts, Terminate accounts (permanently), Suspend accounts (temporarily), Mute members from chat, Mark posts as Announcements (`#FF6600` + pinned at top), Reset user passwords, and Resolve reported chat offenses.
+
+## 4. Active File Tree & Exports
+
+```
+egsm/
+├── .env.example                          # Required env vars template
+├── app.json                              # Expo native config (Android pkg, iOS bundle ID, permissions, plugins)
+├── App.tsx                               # Root component → ThemeProvider → NavigationContainer → AppNavigator
+├── index.ts                              # Expo entry point (registerRootComponent)
+├── package.json                          # Dependencies & scripts
+├── tsconfig.json                         # Extends expo/tsconfig.base, strict: true
+├── PROJECT_CONTEXT.md                    # This file
+├── assets/                               # Expo default icons & splash
+│   ├── icon.png
+│   ├── favicon.png
+│   ├── android-icon-foreground.png
+│   ├── android-icon-background.png
+│   └── android-icon-monochrome.png
+├── supabase/
+│   └── schema.sql                        # Complete PostgreSQL schema, triggers, functions, storage, seed data
+└── src/
+    ├── services/
+    │   └── supabase.ts                   # Supabase client init (expo-secure-store adapter, URL polyfill)
+    ├── theme/
+    │   └── ThemeContext.tsx               # ThemeProvider, useTheme, ThemeColors, ThemeMode, Theme
+    ├── types/
+    │   └── database.ts                   # UserProfile, Post, PostRating, ChatMessage, Poll, PollOption,
+    │                                     #   OffenseReport, PasswordResetRequest
+    │                                     #   Type aliases: UserRole, AccountStatus, MuteStatus,
+    │                                     #   OffenseReportStatus, PasswordResetStatus, AttachmentType
+    ├── navigation/
+    │   └── AppNavigator.tsx              # MainTabParamList, AppNavigator (bottom tabs)
+    └── screens/
+        ├── ChatScreen.tsx                # Placeholder — Chat tab
+        ├── PostsScreen.tsx               # Placeholder — Posts tab
+        ├── AccountSettingsScreen.tsx      # Placeholder — Account Settings tab
+        └── AdminScreen.tsx               # Placeholder — Admin tab (conditional)
+```
+
+### Key Exports by File
+
+| File | Exports |
+|------|---------|
+| `src/services/supabase.ts` | `supabase` (SupabaseClient instance) |
+| `src/theme/ThemeContext.tsx` | `ThemeColors` (interface), `ThemeMode` (type), `Theme` (interface), `ThemeProvider` (component), `useTheme` (hook) |
+| `src/types/database.ts` | `UserRole`, `AccountStatus`, `MuteStatus`, `OffenseReportStatus`, `PasswordResetStatus`, `AttachmentType` (type aliases); `UserProfile`, `Post`, `PostRating`, `ChatMessage`, `Poll`, `PollOption`, `OffenseReport`, `PasswordResetRequest` (interfaces) |
+| `src/navigation/AppNavigator.tsx` | `MainTabParamList` (type), `AppNavigator` (component, props: `{ userRole: UserRole }`) |
+| `src/screens/*.tsx` | `ChatScreen`, `PostsScreen`, `AccountSettingsScreen`, `AdminScreen` (default exports) |
+
+## 5. Supabase Schema & Buckets Reference
+
+### Tables
+
+| Table | Columns | Notes |
+|-------|---------|-------|
+| `profiles` | `id` (UUID PK), `username` (TEXT UNIQUE NOT NULL), `password_hash` (TEXT NOT NULL), `display_name` (TEXT NOT NULL), `role` (user_role: `admin` \| `member`), `status` (account_status: `active` \| `suspended` \| `terminated`), `suspended_until` (TIMESTAMPTZ), `muted_until` (TIMESTAMPTZ), `created_at` (TIMESTAMPTZ DEFAULT now()) | Seeded with admin account (`admin`/`admin123`/`Head Admin`) |
+| `posts` | `id` (UUID PK), `author_id` (UUID FK → profiles.id), `subject` (TEXT NOT NULL), `content` (TEXT NOT NULL), `image_urls` (TEXT[]), `document_urls` (JSONB), `is_announcement` (BOOLEAN DEFAULT false), `created_at` (TIMESTAMPTZ DEFAULT now()) | `trg_prevent_post_deletion` blocks all DELETEs |
+| `post_ratings` | `id` (UUID PK), `post_id` (UUID FK → posts.id), `rater_id` (UUID FK → profiles.id), `score` (INT CHECK 0–10), `created_at` (TIMESTAMPTZ DEFAULT now()), UNIQUE(post_id, rater_id) | One rating per user per post |
+| `messages` | `id` (UUID PK), `sender_id` (UUID FK → profiles.id), `content` (TEXT), `message_type` (message_type: `text` \| `gif` \| `photo` \| `video` \| `voice` \| `document` \| `poll`), `media_url` (TEXT), `media_meta` (JSONB), `is_pinned` (BOOLEAN DEFAULT false), `is_deleted` (BOOLEAN DEFAULT false), `created_at` (TIMESTAMPTZ DEFAULT now()) | Group chat messages |
+| `polls` | `id` (UUID PK), `message_id` (UUID FK → messages.id ON DELETE CASCADE), `question` (TEXT NOT NULL), `options` (JSONB DEFAULT '[]') | Linked to a chat message |
+| `poll_votes` | `id` (UUID PK), `poll_id` (UUID FK → polls.id ON DELETE CASCADE), `voter_id` (UUID FK → profiles.id), `option_index` (INT CHECK >= 0), UNIQUE(poll_id, voter_id) | One vote per user per poll |
+| `offense_reports` | `id` (UUID PK), `message_id` (UUID FK → messages.id), `reporter_id` (UUID FK → profiles.id), `reported_user_id` (UUID FK → profiles.id), `reason` (TEXT NOT NULL), `status` (report_status: `pending` \| `resolved`), `created_at` (TIMESTAMPTZ DEFAULT now()) | Admin reviews in Admin tab |
+| `password_reset_requests` | `id` (UUID PK), `username` (TEXT NOT NULL), `status` (reset_status: `pending` \| `resolved`), `created_at` (TIMESTAMPTZ DEFAULT now()) | Created from "Forgot Password" flow |
+
+### Triggers
+
+| Trigger | Table | Type | Effect |
+|---------|-------|------|--------|
+| `trg_prevent_post_deletion` | `posts` | BEFORE DELETE FOR EACH ROW | RAISES EXCEPTION `'Posts are permanent and cannot be deleted'` |
+
+### Database Functions
+
+| Function | Returns | Description |
+|----------|---------|-------------|
+| `get_weekly_leaderboard()` | TABLE(`user_id`, `username`, `display_name`, `avg_satisfaction_rate`, `weekly_post_count`) | Computes `ROUND((AVG(score) / 10.0) * 100, 1)` and post count for users with ≥ 1 post in the last 7 days, ordered by satisfaction DESC |
+
+### Storage Buckets
+
+| Bucket | Public Read | Authenticated Upload |
+|--------|-------------|---------------------|
+| `post-attachments` | ✅ | ✅ |
+| `chat-media` | ✅ | ✅ |
+
+### Realtime Subscriptions
+
+Tables added to `supabase_realtime` publication: `messages`, `posts`, `post_ratings`, `polls`, `poll_votes`, `profiles`.
+
+### Environment Variables (`.env.example`)
+
+| Variable | Purpose |
+|----------|---------|
+| `EXPO_PUBLIC_SUPABASE_URL` | Supabase project URL |
+| `EXPO_PUBLIC_SUPABASE_ANON_KEY` | Supabase anonymous/public key |
+| `EXPO_PUBLIC_GIPHY_API_KEY` | Giphy SDK API key for GIF search |
+
+## 6. Phase Completion & Handoff Log
+- **[Init]**: `PROJECT_CONTEXT.md` created. Ready for Phase 1.
+- **[Phase 1 — Complete]**: Native mobile scaffold, theme engine & navigation shell.
+  - Expo TypeScript project initialised (SDK 57, React 19, RN 0.86).
+  - `app.json` configured: `android.package` = `com.gruup.social`, `ios.bundleIdentifier` = `com.gruup.social`, Android permissions (`CAMERA`, `RECORD_AUDIO`, `READ_MEDIA_IMAGES`, `READ_MEDIA_VIDEO`, `INTERNET`), iOS `infoPlist` usage descriptions, plugins for `expo-secure-store`, `expo-image-picker`, `expo-document-picker`, `expo-av`.
+  - `ThemeContext.tsx`: Dark (default) & Light palettes with `expo-secure-store` persistence.
+  - `database.ts`: 8 interfaces + 6 type aliases covering all app entities.
+  - `AppNavigator.tsx`: Bottom tab bar with 4 tabs (Admin conditionally visible via `userRole` prop).
+  - **`npx tsc --noEmit` → 0 errors ✅**
+- **[Phase 2 — Complete]**: Supabase schema, client initialisation & environment config.
+  - `supabase/schema.sql`: 8 tables (`profiles`, `posts`, `post_ratings`, `messages`, `polls`, `poll_votes`, `offense_reports`, `password_reset_requests`), custom enums, indexes, `trg_prevent_post_deletion` trigger, `get_weekly_leaderboard()` function, 2 storage buckets with RLS policies, realtime publication, admin seed data.
+  - `src/services/supabase.ts`: Singleton client with `expo-secure-store` adapter and `react-native-url-polyfill`.
+  - `.env.example`: `EXPO_PUBLIC_SUPABASE_URL`, `EXPO_PUBLIC_SUPABASE_ANON_KEY`, `EXPO_PUBLIC_GIPHY_API_KEY`.
+  - Dependencies added: `@supabase/supabase-js`, `react-native-url-polyfill`.
+  - **`npx tsc --noEmit` → 0 errors ✅**
