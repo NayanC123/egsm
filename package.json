@@ -10,6 +10,7 @@
     "expo-av": "^16.0.8",
     "expo-document-picker": "~57.0.3",
     "expo-image-picker": "~57.0.20",
+    "expo-linking": "~57.0.13",
     "expo-secure-store": "~57.0.4",
     "expo-status-bar": "~57.0.1",
     "react": "19.2.3",

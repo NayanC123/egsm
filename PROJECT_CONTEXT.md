@@ -76,8 +76,10 @@ egsm/
         ├── Auth/
         │   └── LoginScreen.tsx           # Pre-login auth screen (no signup, forgot-password modal)
         ├── Posts/
-        │   ├── PostsListScreen.tsx       # Posts feed with pinned announcements, ratings, Leaderboard modal
-        │   └── CreatePostScreen.tsx      # Permanent post creation, camera/gallery/doc pickers, warning banner
+        │   ├── PostsListScreen.tsx       # Posts feed with pinned announcements, ratings, modal launchers
+        │   ├── CreatePostScreen.tsx      # Permanent post creation, camera/gallery/doc pickers, warning banner
+        │   ├── PostDetailScreen.tsx      # Full post view, images, docs (expo-linking), audio (expo-av), 0-10 rating, member ratings list
+        │   └── LeaderboardScreen.tsx     # Live weekly leaderboard, 7-day rule, realtime rankings, #00FFCC progress bars, Back to Menu
         ├── Settings/
         │   └── AccountSettingsScreen.tsx # Account Settings (read-only username, display name, password, theme toggle, logout)
         ├── AccountSettingsScreen.tsx      # Backwards-compatible re-export from Settings/AccountSettingsScreen
@@ -99,6 +101,8 @@ egsm/
 | `src/screens/Auth/LoginScreen.tsx` | `LoginScreen` (default export) |
 | `src/screens/Posts/PostsListScreen.tsx` | `PostsListScreen` (default export) |
 | `src/screens/Posts/CreatePostScreen.tsx` | `CreatePostScreen` (default export) |
+| `src/screens/Posts/PostDetailScreen.tsx` | `PostDetailScreen` (named and default export) |
+| `src/screens/Posts/LeaderboardScreen.tsx` | `LeaderboardScreen` (named and default export) |
 | `src/screens/Settings/AccountSettingsScreen.tsx` | `AccountSettingsScreen` (default export) |
 | `src/screens/*.tsx` | `ChatScreen`, `PostsScreen`, `AccountSettingsScreen`, `AdminScreen` (default exports) |
 
@@ -191,4 +195,30 @@ Tables added to `supabase_realtime` publication: `messages`, `posts`, `post_rati
     - `(Post)` button (`#00FFCC` background, `#050A0E` bold text) inserting post into `posts` table and returning to the feed.
     - Strictly zero delete buttons.
   - `src/screens/PostsScreen.tsx`: Connected to render `Posts/PostsListScreen`.
+  - **`npx tsc --noEmit` → 0 errors ✅**
+- **[Phase 5 — Complete]**: Post Detail 0–10 Rating View & Live Weekly Leaderboard.
+  - `src/screens/Posts/PostDetailScreen.tsx`:
+    - Opens when any post in `PostsListScreen` is tapped.
+    - Displays full `Post Subject`, `Poster Display Name (@username)`, formatted timestamp (full & relative), and full `Post Content`.
+    - Scrollable image attachments with tap-to-expand fullscreen image preview modal.
+    - Clickable document chips opening PDFs/docs via `expo-linking` (`Linking.openURL`).
+    - Inline audio player component powered by `expo-av` (`Audio.Sound`) with Play/Pause button, position/duration tracker (`mm:ss`), dynamic progress bar, and external open link.
+    - Interactive 0–10 Rating Section:
+      - 11 distinct clickable number buttons (`0`, `1`, `2`, `3`, `4`, `5`, `6`, `7`, `8`, `9`, `10`) in a responsive wrap row.
+      - Tapping a score upserts into `post_ratings` (`onConflict: 'post_id,rater_id'`) and immediately highlights user's rating in `#00FFCC` with bold `#050A0E` text.
+      - Live **Satisfaction Rate** display card (`(Average Score / 10) * 100%`) with meter bar.
+      - Scrollable community ratings list showing all member ratings: `Display Name: X/10` with avatar, `@username`, and timestamp.
+      - Supabase Realtime subscription on `post_ratings` (`post_id=eq.${postId}`).
+      - Strictly zero delete buttons anywhere.
+  - `src/screens/Posts/LeaderboardScreen.tsx`:
+    - Opens when the top `Leaderboard` button is tapped on `PostsListScreen`.
+    - Mandatory top banner notice: "Minimum 1 post in the last 7 days required to stay on the Leaderboard."
+    - Calls `get_leaderboard()` RPC (with fallback to `get_weekly_leaderboard()` and client query).
+    - Subscribes to live Supabase Realtime changes on both `posts` and `post_ratings` tables for instant ranking refreshes.
+    - Strictly excludes any user who has not published at least 1 post in the rolling last 7 days.
+    - Displays each qualifying user's `Rank (#1, #2, ...)`, `Display Name (@username)`, `Posts This Week`, and `Average Satisfaction Rate (%)` with `#00FFCC` progress bars.
+    - Fixed `( <- Back to Main Menu )` button at bottom returning to the Posts feed.
+  - `src/screens/Posts/PostsListScreen.tsx`:
+    - Connected post card tap and `⭐ Rate Post (0–10)` button to launch `PostDetailScreen`.
+    - Connected top `Leaderboard` button to launch `LeaderboardScreen`.
   - **`npx tsc --noEmit` → 0 errors ✅**

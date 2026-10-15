@@ -101,6 +101,14 @@ export interface PostRating {
   created_at: string;            // ISO-8601
 }
 
+/** A post rating joined with rater profile information. */
+export interface PostRatingWithRater extends PostRating {
+  profiles?: {
+    username: string;
+    display_name: string;
+  } | null;
+}
+
 /** A message in the single group chat (maps to `chat_messages` table). */
 export interface ChatMessage {
   id: string;                    // uuid

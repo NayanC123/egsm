@@ -37,6 +37,8 @@ import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../theme/ThemeContext';
 import { supabase } from '../../services/supabase';
 import CreatePostScreen from './CreatePostScreen';
+import PostDetailScreen from './PostDetailScreen';
+import LeaderboardScreen from './LeaderboardScreen';
 import type {
   LeaderboardEntry,
   PostAttachmentDoc,
@@ -56,11 +58,10 @@ const PostsListScreen: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
-  // Modals
+  // Modals & Navigation
+  const [selectedPost, setSelectedPost] = useState<PostItemData | null>(null);
   const [createPostVisible, setCreatePostVisible] = useState(false);
   const [leaderboardVisible, setLeaderboardVisible] = useState(false);
-  const [leaderboardData, setLeaderboardData] = useState<LeaderboardEntry[]>([]);
-  const [leaderboardLoading, setLeaderboardLoading] = useState(false);
 
   // Rating interaction states: post ID currently open for rating
   const [activeRatingPostId, setActiveRatingPostId] = useState<string | null>(null);
@@ -237,24 +238,11 @@ const PostsListScreen: React.FC = () => {
   };
 
   /* ------------------------------------------------------------------ */
-  /*  Weekly Leaderboard Fetch                                          */
+  /*  Weekly Leaderboard Navigation                                     */
   /* ------------------------------------------------------------------ */
 
-  const openLeaderboard = async () => {
+  const openLeaderboard = () => {
     setLeaderboardVisible(true);
-    setLeaderboardLoading(true);
-    try {
-      const { data, error } = await supabase.rpc('get_weekly_leaderboard');
-      if (error) {
-        console.warn('Leaderboard RPC error:', error.message);
-      } else {
-        setLeaderboardData((data as LeaderboardEntry[]) || []);
-      }
-    } catch (err: any) {
-      console.warn('Failed to fetch leaderboard:', err?.message);
-    } finally {
-      setLeaderboardLoading(false);
-    }
   };
 
   /* ------------------------------------------------------------------ */
@@ -315,155 +303,168 @@ const PostsListScreen: React.FC = () => {
           },
         ]}
       >
-        {/* ── Announcement Top Badge ── */}
-        {isAnnouncement && (
-          <View style={styles.announcementBadgeRow}>
-            <View style={styles.announcementBadge}>
-              <Text style={styles.announcementBadgeIcon}>📢</Text>
-              <Text style={styles.announcementBadgeText}>
-                PINNED ANNOUNCEMENT
-              </Text>
+        <Pressable
+          onPress={() => setSelectedPost(item)}
+          style={({ pressed }) => [{ opacity: pressed ? 0.92 : 1 }]}
+        >
+          {/* ── Announcement Top Badge ── */}
+          {isAnnouncement && (
+            <View style={styles.announcementBadgeRow}>
+              <View style={styles.announcementBadge}>
+                <Text style={styles.announcementBadgeIcon}>📢</Text>
+                <Text style={styles.announcementBadgeText}>
+                  PINNED ANNOUNCEMENT
+                </Text>
+              </View>
             </View>
-          </View>
-        )}
+          )}
 
-        {/* ── Author Bar ── */}
-        <View style={styles.authorRow}>
-          <View
-            style={[
-              styles.avatarCircle,
-              {
-                backgroundColor: isAnnouncement
-                  ? '#FF6600'
-                  : colors.primary,
-              },
-            ]}
-          >
-            <Text style={styles.avatarLetter}>
-              {authorName.charAt(0).toUpperCase()}
-            </Text>
-          </View>
-
-          <View style={styles.authorMeta}>
-            <View style={styles.authorNameRow}>
-              <Text
-                style={[styles.authorDisplayName, { color: colors.text }]}
-                numberOfLines={1}
-              >
-                {authorName}
-              </Text>
-              <Text
-                style={[styles.authorUsername, { color: colors.muted }]}
-                numberOfLines={1}
-              >
-                @{authorUsername}
-              </Text>
-            </View>
-            <Text style={[styles.postTimestamp, { color: colors.muted }]}>
-              {formatRelativeDate(item.created_at)}
-            </Text>
-          </View>
-
-          {/* ── Satisfaction Rate Pill ── */}
-          <View
-            style={[
-              styles.satisfactionPill,
-              {
-                backgroundColor:
-                  item.satisfaction_rate !== undefined
-                    ? 'rgba(0, 255, 204, 0.12)'
-                    : theme.mode === 'dark'
-                    ? '#131F2A'
-                    : '#EBF0F5',
-                borderColor:
-                  item.satisfaction_rate !== undefined
-                    ? '#00FFCC'
-                    : 'transparent',
-              },
-            ]}
-          >
-            <Text
+          {/* ── Author Bar ── */}
+          <View style={styles.authorRow}>
+            <View
               style={[
-                styles.satisfactionText,
+                styles.avatarCircle,
                 {
-                  color:
-                    item.satisfaction_rate !== undefined
-                      ? '#00FFCC'
-                      : colors.muted,
+                  backgroundColor: isAnnouncement
+                    ? '#FF6600'
+                    : colors.primary,
                 },
               ]}
             >
-              {item.satisfaction_rate !== undefined
-                ? `${item.satisfaction_rate}% ★`
-                : 'No ratings'}
-            </Text>
-          </View>
-        </View>
-
-        {/* ── Post Subject ── */}
-        <Text style={[styles.postSubject, { color: colors.text }]}>
-          {item.subject}
-        </Text>
-
-        {/* ── Post Content ── */}
-        <Text
-          style={[
-            styles.postContent,
-            { color: theme.mode === 'dark' ? '#E1E8EE' : '#2D3748' },
-          ]}
-        >
-          {item.content}
-        </Text>
-
-        {/* ── Image Attachments ── */}
-        {item.image_urls && item.image_urls.length > 0 && (
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            style={styles.imageScrollContainer}
-          >
-            <View style={styles.imageGalleryRow}>
-              {item.image_urls.map((imgUrl, imgIdx) => (
-                <View key={`img-${item.id}-${imgIdx}`} style={styles.imageWrapper}>
-                  <Image source={{ uri: imgUrl }} style={styles.postImage} />
-                </View>
-              ))}
+              <Text style={styles.avatarLetter}>
+                {authorName.charAt(0).toUpperCase()}
+              </Text>
             </View>
-          </ScrollView>
-        )}
 
-        {/* ── Document Attachments ── */}
-        {item.document_urls && item.document_urls.length > 0 && (
-          <View style={styles.documentContainer}>
-            {item.document_urls.map((doc: PostAttachmentDoc, docIdx: number) => (
-              <View
-                key={`doc-${item.id}-${docIdx}`}
+            <View style={styles.authorMeta}>
+              <View style={styles.authorNameRow}>
+                <Text
+                  style={[styles.authorDisplayName, { color: colors.text }]}
+                  numberOfLines={1}
+                >
+                  {authorName}
+                </Text>
+                <Text
+                  style={[styles.authorUsername, { color: colors.muted }]}
+                  numberOfLines={1}
+                >
+                  @{authorUsername}
+                </Text>
+              </View>
+              <Text style={[styles.postTimestamp, { color: colors.muted }]}>
+                {formatRelativeDate(item.created_at)}
+              </Text>
+            </View>
+
+            {/* ── Satisfaction Rate Pill ── */}
+            <View
+              style={[
+                styles.satisfactionPill,
+                {
+                  backgroundColor:
+                    item.satisfaction_rate !== undefined
+                      ? 'rgba(0, 255, 204, 0.12)'
+                      : theme.mode === 'dark'
+                      ? '#131F2A'
+                      : '#EBF0F5',
+                  borderColor:
+                    item.satisfaction_rate !== undefined
+                      ? '#00FFCC'
+                      : 'transparent',
+                },
+              ]}
+            >
+              <Text
                 style={[
-                  styles.docPill,
+                  styles.satisfactionText,
                   {
-                    backgroundColor:
-                      theme.mode === 'dark' ? '#141E28' : '#F0F4F8',
-                    borderColor:
-                      theme.mode === 'dark' ? '#1F2E3D' : '#DDE3EA',
+                    color:
+                      item.satisfaction_rate !== undefined
+                        ? '#00FFCC'
+                        : colors.muted,
                   },
                 ]}
               >
-                <Text style={styles.docIcon}>📄</Text>
-                <Text
-                  style={[styles.docFileName, { color: colors.text }]}
-                  numberOfLines={1}
-                >
-                  {doc.name}
-                </Text>
-                {doc.size ? (
-                  <Text style={[styles.docFileSize, { color: colors.muted }]}>
-                    {(doc.size / 1024).toFixed(0)} KB
-                  </Text>
-                ) : null}
-              </View>
-            ))}
+                {item.satisfaction_rate !== undefined
+                  ? `${item.satisfaction_rate}% ★`
+                  : 'No ratings'}
+              </Text>
+            </View>
           </View>
-        )}
+
+          {/* ── Post Subject ── */}
+          <Text style={[styles.postSubject, { color: colors.text }]}>
+            {item.subject}
+          </Text>
+
+          {/* ── Post Content ── */}
+          <Text
+            style={[
+              styles.postContent,
+              { color: theme.mode === 'dark' ? '#E1E8EE' : '#2D3748' },
+            ]}
+            numberOfLines={4}
+          >
+            {item.content}
+          </Text>
+
+          {/* ── Image Attachments Preview ── */}
+          {item.image_urls && item.image_urls.length > 0 && (
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              style={styles.imageScrollContainer}
+            >
+              <View style={styles.imageGalleryRow}>
+                {item.image_urls.map((imgUrl, imgIdx) => (
+                  <View key={`img-${item.id}-${imgIdx}`} style={styles.imageWrapper}>
+                    <Image source={{ uri: imgUrl }} style={styles.postImage} />
+                  </View>
+                ))}
+              </View>
+            </ScrollView>
+          )}
+
+          {/* ── Document Attachments ── */}
+          {item.document_urls && item.document_urls.length > 0 && (
+            <View style={styles.documentContainer}>
+              {item.document_urls.map((doc: PostAttachmentDoc, docIdx: number) => (
+                <View
+                  key={`doc-${item.id}-${docIdx}`}
+                  style={[
+                    styles.docPill,
+                    {
+                      backgroundColor:
+                        theme.mode === 'dark' ? '#141E28' : '#F0F4F8',
+                      borderColor:
+                        theme.mode === 'dark' ? '#1F2E3D' : '#DDE3EA',
+                    },
+                  ]}
+                >
+                  <Text style={styles.docIcon}>📄</Text>
+                  <Text
+                    style={[styles.docFileName, { color: colors.text }]}
+                    numberOfLines={1}
+                  >
+                    {doc.name}
+                  </Text>
+                  {doc.size ? (
+                    <Text style={[styles.docFileSize, { color: colors.muted }]}>
+                      {(doc.size / 1024).toFixed(0)} KB
+                    </Text>
+                  ) : null}
+                </View>
+              ))}
+            </View>
+          )}
+
+          {/* ── Tap Hint Bar ── */}
+          <View style={styles.tapToDetailRow}>
+            <Text style={[styles.tapToDetailText, { color: '#00FFCC' }]}>
+              Tap to view full post, files & 0–10 ratings ➔
+            </Text>
+          </View>
+        </Pressable>
 
         {/* ── Rating Footer Bar ── */}
         <View
@@ -489,24 +490,20 @@ const PostsListScreen: React.FC = () => {
             style={({ pressed }) => [
               styles.rateButton,
               {
-                backgroundColor: isRatingOpen
-                  ? '#00FFCC'
-                  : 'rgba(0, 255, 204, 0.1)',
+                backgroundColor: 'rgba(0, 255, 204, 0.1)',
                 borderColor: '#00FFCC',
                 opacity: pressed ? 0.8 : 1,
               },
             ]}
-            onPress={() =>
-              setActiveRatingPostId(isRatingOpen ? null : item.id)
-            }
+            onPress={() => setSelectedPost(item)}
           >
             <Text
               style={[
                 styles.rateButtonText,
-                { color: isRatingOpen ? '#050A0E' : '#00FFCC' },
+                { color: '#00FFCC' },
               ]}
             >
-              {isRatingOpen ? 'Close Rating' : '⭐ Rate Post (0–10)'}
+              ⭐ Rate Post (0–10)
             </Text>
           </Pressable>
         </View>
@@ -686,174 +683,36 @@ const PostsListScreen: React.FC = () => {
         />
       </Modal>
 
-      {/* ── Weekly Leaderboard Modal ── */}
+      {/* ── Post Detail Screen Modal ── */}
+      <Modal
+        visible={Boolean(selectedPost)}
+        animationType="slide"
+        presentationStyle="fullScreen"
+        onRequestClose={() => setSelectedPost(null)}
+      >
+        {selectedPost && (
+          <PostDetailScreen
+            postId={selectedPost.id}
+            initialPost={selectedPost}
+            onBack={() => {
+              setSelectedPost(null);
+              fetchPosts();
+            }}
+            onRatingChanged={() => {
+              fetchPosts();
+            }}
+          />
+        )}
+      </Modal>
+
+      {/* ── Live Leaderboard Screen Modal ── */}
       <Modal
         visible={leaderboardVisible}
         animationType="slide"
-        transparent
+        presentationStyle="fullScreen"
         onRequestClose={() => setLeaderboardVisible(false)}
       >
-        <View style={styles.leaderboardModalOverlay}>
-          <View
-            style={[
-              styles.leaderboardModalCard,
-              { backgroundColor: colors.surface },
-            ]}
-          >
-            {/* Modal Header */}
-            <View style={styles.leaderboardHeader}>
-              <Text style={styles.leaderboardEmoji}>🏆</Text>
-              <Text style={[styles.leaderboardTitle, { color: colors.text }]}>
-                Weekly Leaderboard
-              </Text>
-              <Text
-                style={[styles.leaderboardSubtitle, { color: colors.muted }]}
-              >
-                Top members by Satisfaction Rate (min. 1 post in rolling 7 days)
-              </Text>
-            </View>
-
-            {/* List */}
-            {leaderboardLoading ? (
-              <View style={{ paddingVertical: 40, alignItems: 'center' }}>
-                <ActivityIndicator size="large" color="#00FFCC" />
-                <Text
-                  style={[
-                    styles.loadingText,
-                    { color: colors.muted, marginTop: 8 },
-                  ]}
-                >
-                  Calculating leaderboard…
-                </Text>
-              </View>
-            ) : leaderboardData.length === 0 ? (
-              <View style={styles.emptyLeaderboard}>
-                <Text style={{ fontSize: 32, marginBottom: 8 }}>📊</Text>
-                <Text
-                  style={[
-                    styles.emptyTitle,
-                    { color: colors.text, fontSize: 16 },
-                  ]}
-                >
-                  No Eligible Posts
-                </Text>
-                <Text
-                  style={[
-                    styles.emptySubtitle,
-                    { color: colors.muted, textAlign: 'center' },
-                  ]}
-                >
-                  No users have posted in the rolling last 7 days yet. Post to
-                  claim the top spot!
-                </Text>
-              </View>
-            ) : (
-              <ScrollView
-                style={styles.leaderboardScroll}
-                contentContainerStyle={{ paddingVertical: 10 }}
-              >
-                {leaderboardData.map((entry, index) => {
-                  const rank = index + 1;
-                  const isTopRank = rank <= 3;
-                  const rankBadgeBg =
-                    rank === 1
-                      ? '#FFD700'
-                      : rank === 2
-                      ? '#C0C0C0'
-                      : rank === 3
-                      ? '#CD7F32'
-                      : colors.main;
-
-                  return (
-                    <View
-                      key={`rank-${entry.user_id}-${index}`}
-                      style={[
-                        styles.leaderboardRow,
-                        {
-                          backgroundColor:
-                            theme.mode === 'dark' ? '#0A131C' : '#F7FAFC',
-                          borderColor: isTopRank
-                            ? '#00FFCC'
-                            : theme.mode === 'dark'
-                            ? '#1A2633'
-                            : '#E2E8F0',
-                        },
-                      ]}
-                    >
-                      <View
-                        style={[
-                          styles.rankCircle,
-                          {
-                            backgroundColor: rankBadgeBg,
-                          },
-                        ]}
-                      >
-                        <Text
-                          style={[
-                            styles.rankNumber,
-                            { color: isTopRank ? '#050A0E' : colors.text },
-                          ]}
-                        >
-                          #{rank}
-                        </Text>
-                      </View>
-
-                      <View style={styles.leaderboardUserInfo}>
-                        <Text
-                          style={[
-                            styles.leaderboardName,
-                            { color: colors.text },
-                          ]}
-                          numberOfLines={1}
-                        >
-                          {entry.display_name}
-                        </Text>
-                        <Text
-                          style={[
-                            styles.leaderboardUsername,
-                            { color: colors.muted },
-                          ]}
-                        >
-                          @{entry.username} • {entry.weekly_post_count}{' '}
-                          {entry.weekly_post_count === 1 ? 'post' : 'posts'}
-                        </Text>
-                      </View>
-
-                      <View style={styles.leaderboardRateBadge}>
-                        <Text style={styles.leaderboardRateText}>
-                          {entry.avg_satisfaction_rate !== null
-                            ? `${entry.avg_satisfaction_rate}%`
-                            : 'N/A'}
-                        </Text>
-                        <Text
-                          style={[
-                            styles.leaderboardRateLabel,
-                            { color: colors.muted },
-                          ]}
-                        >
-                          Satisfaction
-                        </Text>
-                      </View>
-                    </View>
-                  );
-                })}
-              </ScrollView>
-            )}
-
-            {/* Bottom: Back to Main Menu button */}
-            <Pressable
-              style={({ pressed }) => [
-                styles.leaderboardCloseBtn,
-                { opacity: pressed ? 0.8 : 1 },
-              ]}
-              onPress={() => setLeaderboardVisible(false)}
-            >
-              <Text style={styles.leaderboardCloseText}>
-                ( &lt;- Back to Main Menu )
-              </Text>
-            </Pressable>
-          </View>
-        </View>
+        <LeaderboardScreen onBack={() => setLeaderboardVisible(false)} />
       </Modal>
     </View>
   );
@@ -1061,6 +920,14 @@ const styles = StyleSheet.create({
   docFileSize: {
     fontSize: 11,
     marginLeft: 8,
+  },
+  tapToDetailRow: {
+    marginTop: 10,
+    marginBottom: 4,
+  },
+  tapToDetailText: {
+    fontSize: 12,
+    fontWeight: '700',
   },
 
   /* ── Ratings Bar & Action ── */
