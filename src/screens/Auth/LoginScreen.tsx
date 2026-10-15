@@ -178,6 +178,16 @@ const LoginScreen: React.FC = () => {
         <Text style={[styles.footerNotice, { color: colors.muted }]}>
           Accounts are provisioned exclusively by Administrators.
         </Text>
+
+        {/* ── Creator Attribution ── */}
+        <View style={styles.creditsContainer}>
+          <Text style={[styles.creditLine, { color: colors.muted }]}>
+            Designed by Nayan and Joy
+          </Text>
+          <Text style={[styles.creditLine, { color: colors.muted }]}>
+            Built by Nayan
+          </Text>
+        </View>
       </ScrollView>
 
       {/* ── Forgot Password Modal ── */}
@@ -346,6 +356,19 @@ const styles = StyleSheet.create({
     marginTop: 36,
     fontStyle: 'italic',
     lineHeight: 18,
+  },
+  creditsContainer: {
+    marginTop: 24,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  creditLine: {
+    fontSize: 12,
+    fontWeight: '500',
+    letterSpacing: 0.5,
+    lineHeight: 18,
+    textAlign: 'center',
+    opacity: 0.85,
   },
 
   /* ── Modal ── */

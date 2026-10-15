@@ -43,6 +43,7 @@
 egsm/
 ├── .env.example                          # Required env vars template
 ├── app.json                              # Expo native config (Android pkg, iOS bundle ID, permissions, plugins)
+├── eas.json                              # EAS Build configuration (preview APK/simulator, production AAB/IPA)
 ├── App.tsx                               # Root component → ThemeProvider → AuthProvider → LoginScreen / AppNavigator
 ├── index.ts                              # Expo entry point (registerRootComponent)
 ├── package.json                          # Dependencies & scripts
@@ -101,7 +102,9 @@ egsm/
         ├── AccountSettingsScreen.tsx      # Backwards-compatible re-export from Settings/AccountSettingsScreen
         ├── ChatScreen.tsx                # Chat tab entry point — renders Chat/GroupChatScreen
         ├── PostsScreen.tsx               # Posts tab shell rendering Posts/PostsListScreen
-        └── AdminScreen.tsx               # Placeholder — Admin tab (conditional)
+        ├── Admin/
+        │   └── AdminPortalScreen.tsx     # Admin Portal (Tab 1 Accounts, Tab 2 Announcements, Tab 3 Reports/Resets)
+        └── AdminScreen.tsx               # Admin tab root rendering Admin/AdminPortalScreen
 ```
 
 ### Key Exports by File
@@ -114,7 +117,7 @@ egsm/
 | `src/services/supabase.ts` | `supabase` (SupabaseClient instance) |
 | `src/services/storage.ts` | `uploadPostAttachment`, `uploadChatMedia` (async helper functions), `UploadedAttachment` (interface) |
 | `src/theme/ThemeContext.tsx` | `ThemeColors` (interface), `ThemeMode` (type), `Theme` (interface), `ThemeProvider` (component), `useTheme` (hook) |
-| `src/types/database.ts` | `UserRole`, `AccountStatus`, `MuteStatus`, `OffenseReportStatus`, `PasswordResetStatus`, `AttachmentType`, `MessageType` (type aliases); `UserProfile`, `Post`, `PostWithAuthor`, `PostAttachmentDoc`, `LeaderboardEntry`, `PostRating`, `ChatMessage`, `ChatMediaMeta`, `Poll`, `PollOption`, `PollVote`, `PollWithVotes`, `ChatMessageWithSender`, `OffenseReport`, `PasswordResetRequest` (interfaces) |
+| `src/types/database.ts` | `UserRole`, `AccountStatus`, `MuteStatus`, `OffenseReportStatus`, `PasswordResetStatus`, `AttachmentType`, `MessageType` (type aliases); `UserProfile`, `Post`, `PostWithAuthor`, `PostAttachmentDoc`, `LeaderboardEntry`, `PostRating`, `ChatMessage`, `ChatMediaMeta`, `Poll`, `PollOption`, `PollVote`, `PollWithVotes`, `ChatMessageWithSender`, `OffenseReport`, `OffenseReportWithDetails`, `PasswordResetRequest` (interfaces) |
 | `src/navigation/AppNavigator.tsx` | `MainTabParamList` (type), `AppNavigator` (component, props: `{ userRole: UserRole }`) |
 | `src/components/Chat/GiphyModal.tsx` | `GiphyModal` (component, default & named export) |
 | `src/components/Chat/VoiceMessagePlayer.tsx` | `VoiceMessagePlayer` (component, default & named export) |
@@ -130,6 +133,7 @@ egsm/
 | `src/screens/Posts/LeaderboardScreen.tsx` | `LeaderboardScreen` (named and default export) |
 | `src/screens/Chat/GroupChatScreen.tsx` | `GroupChatScreen` (named and default export) |
 | `src/screens/Settings/AccountSettingsScreen.tsx` | `AccountSettingsScreen` (default export) |
+| `src/screens/Admin/AdminPortalScreen.tsx` | `AdminPortalScreen` (named and default export) |
 | `src/screens/*.tsx` | `ChatScreen`, `PostsScreen`, `AccountSettingsScreen`, `AdminScreen` (default exports) |
 
 ## 5. Supabase Schema & Buckets Reference
@@ -284,3 +288,57 @@ Tables added to `supabase_realtime` publication: `messages`, `posts`, `post_rati
     - Tier 1 — Warning: 5 in 5s OR 12 in 60s -> locks Send button for 3s and displays `#FF6600` warning toast ("Slow down! Sending messages too fast.").
   - `src/screens/Chat/GroupChatScreen.tsx`: Fully wired against `useSpamLimiter` before sending text, photos/videos, documents, voice notes, GIFs, and polls. Displays live banners, toasts, and cooldown badges.
   - **`npx tsc --noEmit` → 0 errors ✅**
+- **[Phase 8 — Complete]**: Administration Portal & Native Android/iOS Build Verification.
+  - `src/screens/Admin/AdminPortalScreen.tsx`: Complete production-grade administration portal strictly guarded for `user.role === 'admin'`.
+    - **Tab 1: Create & Manage Accounts**:
+      - `Create User Account` form: Administrator provisions accounts directly with `Username`, `Initial Password` (with random secure password generator `🎲 Generate Random`), `Display Name`, and `Role` (`member` | `admin`), inserting directly into `profiles`.
+      - `User Directory`: Searchable real-time directory filtering by username or display name with active user count and live status badges (`ACTIVE` in `#00FFCC`, `SUSPENDED` in `#FF6600`, `MUTED` in `#9966FF`, `TERMINATED` in `#FF3366`).
+      - User Actions:
+        - `Mute / Unmute from Chat`: Select duration (10m, 1h, 24h, or Clear Mute) -> updates `profiles.muted_until`.
+        - `Suspend Account Temporarily`: Select duration (1h, 24h, 7d, or Lift Suspension) -> updates `profiles.status = 'suspended'` and `suspended_until` (or `status = 'active', suspended_until = null`).
+        - `Terminate Account Permanently`: Native confirmation modal -> sets `profiles.status = 'terminated'`, which triggers instant Realtime kick and session termination for the target user.
+        - `Change User Password`: Directly set a new password for any user with random password generator.
+    - **Tab 2: Announcements Manager**:
+      - Real-time list of all posts joined with author profile.
+      - Search filter by post subject, content, or author.
+      - Instant toggle switch: marks/unmarks any post as an Announcement (`is_announcement = true/false`). Announcements immediately pin to the top of the Posts feed with a prominent `#FF6600` accent border and `📢 PINNED ANNOUNCEMENT` badge.
+    - **Tab 3: Offense Reports & Password Requests**:
+      - Sub-tabs with real-time pending counters:
+        - `Offense Reports`: View pending reports showing reporter, reported user (with live status badges), category/reason, formatted timestamp, and message preview snippet with type badge. One-tap actions: `Delete Message` (sets `is_deleted = true`), `Mute User` (quick chat mute), `Suspend User` (quick account suspension), `Terminate User` (permanent termination), and `Mark Resolved` (`status = 'resolved'`).
+        - `Password Requests`: View pending `password_reset_requests` from the login screen with username and timestamp. One-tap `Reset Password in 1 Tap` modal generates a secure temporary password, updates `profiles.password_hash`, marks the request resolved, and displays the new password to share with the user.
+  - `src/screens/AdminScreen.tsx`: Root screen rendering `Admin/AdminPortalScreen`.
+  - `src/screens/Auth/LoginScreen.tsx`: Added creator attribution:
+    - "Designed by Nayan and Joy"
+    - "Built by Nayan"
+  - `eas.json`: Configured with:
+    - `preview` profile: builds installable Android `.apk` (`"android": { "buildType": "apk" }`) and iOS simulator/ad-hoc build (`"ios": { "simulator": true }`).
+    - `production` profile: builds Android `.aab` (`"android": { "buildType": "app-bundle" }`) and iOS `.ipa` (`"ios": { "simulator": false }`).
+  - Native Code Audit:
+    - 0 HTML / DOM elements (`div`, `span`, `p`, `button`, `input`, `img`, `a`).
+    - 0 CSS files or web storage (`window.localStorage`).
+    - 100% React Native primitives (`View`, `Text`, `TextInput`, `Pressable`, `FlatList`, `ScrollView`, `Modal`, `StyleSheet`, `SafeAreaView`, `Switch`, `ActivityIndicator`, `Alert`).
+    - **`npx tsc --noEmit` → 0 errors ✅**
+
+---
+
+## 7. Native Compilation & EAS Build Commands
+
+### Android Preview Build (Installable `.apk`)
+```bash
+eas build -p android --profile preview
+```
+
+### iOS Preview Build (Simulator / Ad-Hoc Build)
+```bash
+eas build -p ios --profile preview
+```
+
+### Production Release Builds
+- **Android App Bundle (`.aab` for Google Play)**:
+  ```bash
+  eas build -p android --profile production
+  ```
+- **iOS Archive (`.ipa` for App Store)**:
+  ```bash
+  eas build -p ios --profile production
+  ```

@@ -205,12 +205,38 @@ export interface OffenseReport {
   created_at: string;            // ISO-8601
 }
 
+/** Offense report with joined reporter, reported user, and message details. */
+export interface OffenseReportWithDetails extends OffenseReport {
+  reporter?: {
+    id?: string;
+    username: string;
+    display_name: string;
+  } | null;
+  reported_user?: {
+    id: string;
+    username: string;
+    display_name: string;
+    status: AccountStatus;
+    muted_until?: string | null;
+    suspended_until?: string | null;
+  } | null;
+  message?: {
+    id: string;
+    content: string | null;
+    message_type: MessageType;
+    media_url?: string | null;
+    is_deleted: boolean;
+  } | null;
+}
+
 /** A password-reset request for admin handling. */
 export interface PasswordResetRequest {
   id: string;                    // uuid
-  user_id: string;               // FK → profiles.id
+  username: string;              // username requested
   status: PasswordResetStatus;
-  handled_by: string | null;     // FK → profiles.id (admin)
+  user_id?: string;              // optional FK → profiles.id
+  handled_by?: string | null;    // FK → profiles.id (admin)
   created_at: string;            // ISO-8601
-  updated_at: string;            // ISO-8601
+  updated_at?: string;           // ISO-8601
 }
+
