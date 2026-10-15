@@ -49,6 +49,14 @@ export interface UserProfile {
   updated_at: string;            // ISO-8601 timestamp
 }
 
+/** Document attachment metadata for a post. */
+export interface PostAttachmentDoc {
+  name: string;
+  url: string;
+  size?: number;
+  mimeType?: string;
+}
+
 /** A post in the community feed (maps to `posts` table). */
 export interface Post {
   id: string;                    // uuid
@@ -56,10 +64,32 @@ export interface Post {
   subject: string;
   content: string;
   is_announcement: boolean;      // pinned + #FF6600 when true
-  attachments: string[];         // Storage-bucket URLs
-  satisfaction_rate: number;     // computed: (AVG(score)/10)*100
-  ratings_count: number;         // total number of ratings received
+  image_urls?: string[] | null;  // Storage-bucket URLs for images
+  document_urls?: PostAttachmentDoc[] | null; // Storage-bucket documents
+  attachments?: string[];        // Backwards-compatible alias
+  satisfaction_rate?: number;    // computed: (AVG(score)/10)*100
+  ratings_count?: number;        // total number of ratings received
   created_at: string;            // ISO-8601
+}
+
+/** A post with joined author profile and computed rating info. */
+export interface PostWithAuthor extends Post {
+  author?: {
+    username: string;
+    display_name: string;
+  };
+  average_score?: number | null;
+  satisfaction_rate?: number;
+  ratings_count?: number;
+}
+
+/** An entry returned by get_weekly_leaderboard(). */
+export interface LeaderboardEntry {
+  user_id: string;
+  username: string;
+  display_name: string;
+  avg_satisfaction_rate: number;
+  weekly_post_count: number;
 }
 
 /** A 0–10 rating on a post (maps to `post_ratings` table). */

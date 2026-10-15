@@ -60,11 +60,13 @@ egsm/
     ├── context/
     │   └── AuthContext.tsx               # AuthProvider, useAuth (custom profiles auth, realtime status, secure session)
     ├── services/
-    │   └── supabase.ts                   # Supabase client init (expo-secure-store adapter, URL polyfill)
+    │   ├── supabase.ts                   # Supabase client init (expo-secure-store adapter, URL polyfill)
+    │   └── storage.ts                    # Supabase Storage helpers (uploadPostAttachment to post-attachments)
     ├── theme/
     │   └── ThemeContext.tsx               # ThemeProvider, useTheme, ThemeColors, ThemeMode, Theme
     ├── types/
-    │   └── database.ts                   # UserProfile, Post, PostRating, ChatMessage, Poll, PollOption,
+    │   └── database.ts                   # UserProfile, Post, PostRating, PostWithAuthor, PostAttachmentDoc,
+    │                                     #   LeaderboardEntry, ChatMessage, Poll, PollOption,
     │                                     #   OffenseReport, PasswordResetRequest
     │                                     #   Type aliases: UserRole, AccountStatus, MuteStatus,
     │                                     #   OffenseReportStatus, PasswordResetStatus, AttachmentType
@@ -73,11 +75,14 @@ egsm/
     └── screens/
         ├── Auth/
         │   └── LoginScreen.tsx           # Pre-login auth screen (no signup, forgot-password modal)
+        ├── Posts/
+        │   ├── PostsListScreen.tsx       # Posts feed with pinned announcements, ratings, Leaderboard modal
+        │   └── CreatePostScreen.tsx      # Permanent post creation, camera/gallery/doc pickers, warning banner
         ├── Settings/
         │   └── AccountSettingsScreen.tsx # Account Settings (read-only username, display name, password, theme toggle, logout)
         ├── AccountSettingsScreen.tsx      # Backwards-compatible re-export from Settings/AccountSettingsScreen
         ├── ChatScreen.tsx                # Placeholder — Chat tab
-        ├── PostsScreen.tsx               # Placeholder — Posts tab
+        ├── PostsScreen.tsx               # Posts tab shell rendering Posts/PostsListScreen
         └── AdminScreen.tsx               # Placeholder — Admin tab (conditional)
 ```
 
@@ -87,10 +92,13 @@ egsm/
 |------|---------|
 | `src/context/AuthContext.tsx` | `AuthProvider` (component), `useAuth` (hook) |
 | `src/services/supabase.ts` | `supabase` (SupabaseClient instance) |
+| `src/services/storage.ts` | `uploadPostAttachment` (async helper function), `UploadedAttachment` (interface) |
 | `src/theme/ThemeContext.tsx` | `ThemeColors` (interface), `ThemeMode` (type), `Theme` (interface), `ThemeProvider` (component), `useTheme` (hook) |
-| `src/types/database.ts` | `UserRole`, `AccountStatus`, `MuteStatus`, `OffenseReportStatus`, `PasswordResetStatus`, `AttachmentType` (type aliases); `UserProfile`, `Post`, `PostRating`, `ChatMessage`, `Poll`, `PollOption`, `OffenseReport`, `PasswordResetRequest` (interfaces) |
+| `src/types/database.ts` | `UserRole`, `AccountStatus`, `MuteStatus`, `OffenseReportStatus`, `PasswordResetStatus`, `AttachmentType` (type aliases); `UserProfile`, `Post`, `PostWithAuthor`, `PostAttachmentDoc`, `LeaderboardEntry`, `PostRating`, `ChatMessage`, `Poll`, `PollOption`, `OffenseReport`, `PasswordResetRequest` (interfaces) |
 | `src/navigation/AppNavigator.tsx` | `MainTabParamList` (type), `AppNavigator` (component, props: `{ userRole: UserRole }`) |
 | `src/screens/Auth/LoginScreen.tsx` | `LoginScreen` (default export) |
+| `src/screens/Posts/PostsListScreen.tsx` | `PostsListScreen` (default export) |
+| `src/screens/Posts/CreatePostScreen.tsx` | `CreatePostScreen` (default export) |
 | `src/screens/Settings/AccountSettingsScreen.tsx` | `AccountSettingsScreen` (default export) |
 | `src/screens/*.tsx` | `ChatScreen`, `PostsScreen`, `AccountSettingsScreen`, `AdminScreen` (default exports) |
 
@@ -161,4 +169,26 @@ Tables added to `supabase_realtime` publication: `messages`, `posts`, `post_rati
   - `src/screens/Settings/AccountSettingsScreen.tsx`: Displays read-only `Username` with lock indicator (🔒 "Set by Administrators"). Allows updating `Display Name` (`profiles.display_name`) with instant context refresh. Allows updating `Password` requiring current password verification before updating `profiles.password_hash`. Includes Dark Mode / Light Mode toggle switch wired to `ThemeContext`, and high-contrast styled `Log Out` button (`#FF6600`).
   - `App.tsx`: Wired `AuthProvider` at root, rendering loading indicator while hydrating session, `LoginScreen` for unauthenticated state, and `AppNavigator` with user role once authenticated.
   - `AppNavigator.tsx`: Connected Account Settings tab directly to `src/screens/Settings/AccountSettingsScreen.tsx`.
+  - **`npx tsc --noEmit` → 0 errors ✅**
+- **[Phase 4 — Complete]**: Posts Feed, Pinned Announcements & Permanent Post Creation.
+  - `src/services/storage.ts`: `uploadPostAttachment` uploads binary files (photos, audio, documents, PDFs) from local file URIs to the Supabase Storage `post-attachments` bucket and generates public URLs.
+  - `src/screens/Posts/PostsListScreen.tsx`: Complete community feed screen.
+    - Header bar with `Leaderboard` button (`#00FFCC`) opening the Weekly Leaderboard modal.
+    - Fetches posts joined with author `display_name` and `username`, plus average rating score and satisfaction rate (`%`).
+    - Sort order: All posts with `is_announcement = true` are pinned at the top of the `FlatList`, styled with `#FF6600` (Accent Orange) card border, `📢 PINNED ANNOUNCEMENT` badge, and orange background tint. Regular posts follow in reverse chronological order.
+    - Each post card displays author display name (`@username`), subject, announcement badge, satisfaction rate (%), post content, media thumbnails (images and document chips), and interactive 0–10 rating selector with live Supabase upsert.
+    - Floating / bottom-docked `(+ New)` button (`#00FFCC` background, `#050A0E` bold text) that opens `CreatePostScreen`.
+    - Integrated Weekly Leaderboard modal calling `get_weekly_leaderboard()` RPC, displaying ranks, post counts, and satisfaction %, with `( <- Back to Main Menu )` close button.
+    - Realtime subscriptions to `posts` and `post_ratings` tables.
+    - Strictly zero delete buttons anywhere for posts (enforcing permanent posts).
+  - `src/screens/Posts/CreatePostScreen.tsx`: Permanent post creation screen.
+    - Text inputs for `Post Subject` and multiline `Post Content`.
+    - Camera / Gallery button using `expo-image-picker` to take photos or choose from photo library and upload to `post-attachments`.
+    - Paperclip button using `expo-document-picker` to attach PDFs, audio files, or documents and upload to `post-attachments`.
+    - Preview thumbnails with remove buttons for pre-publish draft management.
+    - Admin-only toggle: "Mark as Pinned Announcement" (`#FF6600`).
+    - Mandatory high-contrast warning banner: "Note: Posts are permanent and cannot be deleted once published."
+    - `(Post)` button (`#00FFCC` background, `#050A0E` bold text) inserting post into `posts` table and returning to the feed.
+    - Strictly zero delete buttons.
+  - `src/screens/PostsScreen.tsx`: Connected to render `Posts/PostsListScreen`.
   - **`npx tsc --noEmit` → 0 errors ✅**
