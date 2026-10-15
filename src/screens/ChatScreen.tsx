@@ -1,42 +1,15 @@
 /**
  * src/screens/ChatScreen.tsx
  *
- * Placeholder for the Group Chat tab.
+ * Group Chat tab entry point — renders GroupChatScreen.
  */
 
 import React from 'react';
-import { StyleSheet, Text, View } from 'react-native';
-import { useTheme } from '../theme/ThemeContext';
+import GroupChatScreen from './Chat/GroupChatScreen';
 
-const ChatScreen: React.FC = () => {
-  const { theme } = useTheme();
-  const { colors } = theme;
-
-  return (
-    <View style={[styles.container, { backgroundColor: colors.main }]}>
-      <Text style={[styles.title, { color: colors.primary }]}>Chat</Text>
-      <Text style={[styles.subtitle, { color: colors.muted }]}>
-        Group chat coming soon…
-      </Text>
-    </View>
-  );
+export const ChatScreen: React.FC = () => {
+  return <GroupChatScreen />;
 };
 
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 24,
-  },
-  title: {
-    fontSize: 28,
-    fontWeight: '700',
-    marginBottom: 8,
-  },
-  subtitle: {
-    fontSize: 15,
-  },
-});
-
 export default ChatScreen;
+

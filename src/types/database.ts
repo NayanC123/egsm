@@ -109,46 +109,98 @@ export interface PostRatingWithRater extends PostRating {
   } | null;
 }
 
-/** A message in the single group chat (maps to `chat_messages` table). */
+export type MessageType =
+  | 'text'
+  | 'gif'
+  | 'photo'
+  | 'video'
+  | 'voice'
+  | 'document'
+  | 'poll';
+
+export interface ChatMediaMeta {
+  name?: string;
+  size?: number;
+  mimeType?: string;
+  duration?: number;
+  width?: number;
+  height?: number;
+}
+
+/** A message in the group chat (maps to `messages` table). */
 export interface ChatMessage {
   id: string;                    // uuid
   sender_id: string;             // FK → profiles.id
-  content: string;               // plain text / hyperlinks
-  attachment_url: string | null; // Storage-bucket URL
-  attachment_type: AttachmentType | null;
-  gif_url: string | null;        // Giphy URL when message is a GIF
+  content: string | null;        // plain text / hyperlinks
+  message_type: MessageType;     // 'text' | 'gif' | 'photo' | 'video' | 'voice' | 'document' | 'poll'
+  media_url?: string | null;     // Storage-bucket URL or GIF URL
+  media_meta?: ChatMediaMeta | null;
   is_pinned: boolean;
   is_deleted: boolean;
-  poll_id: string | null;        // FK → polls.id (if message is a poll)
   created_at: string;            // ISO-8601
+  // Backwards compatibility aliases
+  attachment_url?: string | null;
+  attachment_type?: AttachmentType | null;
+  gif_url?: string | null;
+  poll_id?: string | null;
+}
+
+/** A single option inside a Poll. */
+export interface PollOption {
+  id?: string;                    // optional uuid
+  label: string;
+  text?: string;
+  voter_ids?: string[];           // array of profile ids who voted
+}
+
+/** A poll vote (maps to `poll_votes` table). */
+export interface PollVote {
+  id: string;                    // uuid
+  poll_id: string;               // FK → polls.id
+  voter_id: string;              // FK → profiles.id
+  option_index: number;          // 0-based index of option chosen
 }
 
 /** A poll attached to a chat message (maps to `polls` table). */
 export interface Poll {
   id: string;                    // uuid
-  creator_id: string;            // FK → profiles.id
+  message_id: string;            // FK → messages.id
   question: string;
-  options: PollOption[];
-  is_closed: boolean;
-  created_at: string;            // ISO-8601
+  options: string[] | PollOption[];
+  creator_id?: string;
+  is_closed?: boolean;
+  created_at?: string;
 }
 
-/** A single option inside a Poll. */
-export interface PollOption {
-  id: string;                    // uuid
-  label: string;
-  voter_ids: string[];           // array of profile ids who voted
+/** Poll aggregated with votes and calculation metadata. */
+export interface PollWithVotes extends Poll {
+  votes: PollVote[];
+  userVoteIndex: number | null;
+  totalVotes: number;
+  optionCounts: number[];
+}
+
+/** A chat message joined with sender profile and associated poll. */
+export interface ChatMessageWithSender extends ChatMessage {
+  sender?: {
+    id: string;
+    username: string;
+    display_name: string;
+    role: UserRole;
+  } | null;
+  poll?: PollWithVotes | null;
 }
 
 /** An offense report submitted by a user about a chat message. */
 export interface OffenseReport {
   id: string;                    // uuid
   reporter_id: string;           // FK → profiles.id
-  message_id: string;            // FK → chat_messages.id
+  message_id: string;            // FK → messages.id
+  reported_user_id: string;      // FK → profiles.id
   reason: string;
   status: OffenseReportStatus;
-  resolved_by: string | null;    // FK → profiles.id (admin who resolved)
-  resolved_at: string | null;    // ISO-8601
+  resolved_by?: string | null;   // FK → profiles.id (admin who resolved)
+  resolved_at?: string | null;   // ISO-8601
   created_at: string;            // ISO-8601
 }
 

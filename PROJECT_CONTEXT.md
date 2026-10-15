@@ -57,16 +57,26 @@ egsm/
 ├── supabase/
 │   └── schema.sql                        # Complete PostgreSQL schema, triggers, functions, storage, seed data
 └── src/
+    ├── components/
+    │   └── Chat/
+    │       ├── GiphyModal.tsx                # Giphy REST API GIF search/trending picker modal with fallbacks
+    │       ├── VoiceMessagePlayer.tsx        # Inline expo-av sound player with scrubber & duration timer
+    │       ├── PollCard.tsx                  # Interactive poll card with percentage bars & one-tap voting
+    │       ├── CreatePollModal.tsx           # Multi-option poll composer modal
+    │       ├── ReportOffenseModal.tsx        # Report offense modal inserting into offense_reports
+    │       ├── MessageContextMenu.tsx        # Long-press sheet: Pin/Unpin, Delete message, Report offense
+    │       └── PinnedMessagesBar.tsx         # Sticky collapsible header bar showing pinned chat messages
     ├── context/
     │   └── AuthContext.tsx               # AuthProvider, useAuth (custom profiles auth, realtime status, secure session)
     ├── services/
     │   ├── supabase.ts                   # Supabase client init (expo-secure-store adapter, URL polyfill)
-    │   └── storage.ts                    # Supabase Storage helpers (uploadPostAttachment to post-attachments)
+    │   └── storage.ts                    # Supabase Storage helpers (uploadPostAttachment, uploadChatMedia)
     ├── theme/
     │   └── ThemeContext.tsx               # ThemeProvider, useTheme, ThemeColors, ThemeMode, Theme
     ├── types/
     │   └── database.ts                   # UserProfile, Post, PostRating, PostWithAuthor, PostAttachmentDoc,
-    │                                     #   LeaderboardEntry, ChatMessage, Poll, PollOption,
+    │                                     #   LeaderboardEntry, ChatMessage, MessageType, ChatMediaMeta,
+    │                                     #   Poll, PollOption, PollVote, PollWithVotes, ChatMessageWithSender,
     │                                     #   OffenseReport, PasswordResetRequest
     │                                     #   Type aliases: UserRole, AccountStatus, MuteStatus,
     │                                     #   OffenseReportStatus, PasswordResetStatus, AttachmentType
@@ -80,10 +90,12 @@ egsm/
         │   ├── CreatePostScreen.tsx      # Permanent post creation, camera/gallery/doc pickers, warning banner
         │   ├── PostDetailScreen.tsx      # Full post view, images, docs (expo-linking), audio (expo-av), 0-10 rating, member ratings list
         │   └── LeaderboardScreen.tsx     # Live weekly leaderboard, 7-day rule, realtime rankings, #00FFCC progress bars, Back to Menu
+        ├── Chat/
+        │   └── GroupChatScreen.tsx       # Realtime group chat: hyperlinks, media, voice notes, documents, polls, pinning, deletion, reporting
         ├── Settings/
         │   └── AccountSettingsScreen.tsx # Account Settings (read-only username, display name, password, theme toggle, logout)
         ├── AccountSettingsScreen.tsx      # Backwards-compatible re-export from Settings/AccountSettingsScreen
-        ├── ChatScreen.tsx                # Placeholder — Chat tab
+        ├── ChatScreen.tsx                # Chat tab entry point — renders Chat/GroupChatScreen
         ├── PostsScreen.tsx               # Posts tab shell rendering Posts/PostsListScreen
         └── AdminScreen.tsx               # Placeholder — Admin tab (conditional)
 ```
@@ -94,15 +106,23 @@ egsm/
 |------|---------|
 | `src/context/AuthContext.tsx` | `AuthProvider` (component), `useAuth` (hook) |
 | `src/services/supabase.ts` | `supabase` (SupabaseClient instance) |
-| `src/services/storage.ts` | `uploadPostAttachment` (async helper function), `UploadedAttachment` (interface) |
+| `src/services/storage.ts` | `uploadPostAttachment`, `uploadChatMedia` (async helper functions), `UploadedAttachment` (interface) |
 | `src/theme/ThemeContext.tsx` | `ThemeColors` (interface), `ThemeMode` (type), `Theme` (interface), `ThemeProvider` (component), `useTheme` (hook) |
-| `src/types/database.ts` | `UserRole`, `AccountStatus`, `MuteStatus`, `OffenseReportStatus`, `PasswordResetStatus`, `AttachmentType` (type aliases); `UserProfile`, `Post`, `PostWithAuthor`, `PostAttachmentDoc`, `LeaderboardEntry`, `PostRating`, `ChatMessage`, `Poll`, `PollOption`, `OffenseReport`, `PasswordResetRequest` (interfaces) |
+| `src/types/database.ts` | `UserRole`, `AccountStatus`, `MuteStatus`, `OffenseReportStatus`, `PasswordResetStatus`, `AttachmentType`, `MessageType` (type aliases); `UserProfile`, `Post`, `PostWithAuthor`, `PostAttachmentDoc`, `LeaderboardEntry`, `PostRating`, `ChatMessage`, `ChatMediaMeta`, `Poll`, `PollOption`, `PollVote`, `PollWithVotes`, `ChatMessageWithSender`, `OffenseReport`, `PasswordResetRequest` (interfaces) |
 | `src/navigation/AppNavigator.tsx` | `MainTabParamList` (type), `AppNavigator` (component, props: `{ userRole: UserRole }`) |
+| `src/components/Chat/GiphyModal.tsx` | `GiphyModal` (component, default & named export) |
+| `src/components/Chat/VoiceMessagePlayer.tsx` | `VoiceMessagePlayer` (component, default & named export) |
+| `src/components/Chat/PollCard.tsx` | `PollCard` (component, default & named export) |
+| `src/components/Chat/CreatePollModal.tsx` | `CreatePollModal` (component, default & named export) |
+| `src/components/Chat/ReportOffenseModal.tsx` | `ReportOffenseModal` (component, default & named export) |
+| `src/components/Chat/MessageContextMenu.tsx` | `MessageContextMenu` (component, default & named export) |
+| `src/components/Chat/PinnedMessagesBar.tsx` | `PinnedMessagesBar` (component, default & named export) |
 | `src/screens/Auth/LoginScreen.tsx` | `LoginScreen` (default export) |
 | `src/screens/Posts/PostsListScreen.tsx` | `PostsListScreen` (default export) |
 | `src/screens/Posts/CreatePostScreen.tsx` | `CreatePostScreen` (default export) |
 | `src/screens/Posts/PostDetailScreen.tsx` | `PostDetailScreen` (named and default export) |
 | `src/screens/Posts/LeaderboardScreen.tsx` | `LeaderboardScreen` (named and default export) |
+| `src/screens/Chat/GroupChatScreen.tsx` | `GroupChatScreen` (named and default export) |
 | `src/screens/Settings/AccountSettingsScreen.tsx` | `AccountSettingsScreen` (default export) |
 | `src/screens/*.tsx` | `ChatScreen`, `PostsScreen`, `AccountSettingsScreen`, `AdminScreen` (default exports) |
 
@@ -221,4 +241,29 @@ Tables added to `supabase_realtime` publication: `messages`, `posts`, `post_rati
   - `src/screens/Posts/PostsListScreen.tsx`:
     - Connected post card tap and `⭐ Rate Post (0–10)` button to launch `PostDetailScreen`.
     - Connected top `Leaderboard` button to launch `LeaderboardScreen`.
+  - **`npx tsc --noEmit` → 0 errors ✅**
+- **[Phase 6 — Complete]**: Realtime Group Chat & Rich Media Capabilities.
+  - `src/services/storage.ts`: Added `uploadChatMedia` helper to upload photos, videos, voice recordings (`.m4a`), and documents (`.pdf`, audio, files) directly to the public `chat-media` bucket.
+  - `src/types/database.ts`: Enriched `ChatMessage`, `MessageType` (`'text' | 'gif' | 'photo' | 'video' | 'voice' | 'document' | 'poll'`), `ChatMediaMeta`, `Poll`, `PollOption`, `PollVote`, `PollWithVotes`, `ChatMessageWithSender`, and `OffenseReport`.
+  - `src/components/Chat/GiphyModal.tsx`: Native modal fetching trending and searched GIFs from the Giphy REST API (`https://api.giphy.com/v1/gifs/search` with `EXPO_PUBLIC_GIPHY_API_KEY`) via standard `fetch()`, including search debounce, query clear, and curated fallback GIFs for test reliability.
+  - `src/components/Chat/VoiceMessagePlayer.tsx`: Audio player for voice messages in chat bubbles using `expo-av` `Audio.Sound` with play/pause button, dynamic scrubber progress track, time display (`mm:ss`), and clean resource unloading.
+  - `src/components/Chat/PollCard.tsx`: Interactive poll card showing question, percentage bars, vote counts, active voter checkmark, and one-tap voting with Supabase upsert on `poll_votes`.
+  - `src/components/Chat/CreatePollModal.tsx`: Poll composition modal with question input and dynamic options list (2 to 6 options), validation, and creation of `poll` message and `polls` record.
+  - `src/components/Chat/ReportOffenseModal.tsx`: Offense reporting modal with reported message snippet, category chips (Harassment, Spam, Hate Speech, etc.), details input, inserting into `offense_reports`.
+  - `src/components/Chat/MessageContextMenu.tsx`: Bottom sheet context menu on long-press with Pin/Unpin, Delete Message (sender or admin; sets `is_deleted = true`), and Report Offense actions.
+  - `src/components/Chat/PinnedMessagesBar.tsx`: Sticky collapsible header bar showing pinned chat messages with pin icon (`#FF6600`), badge count, collapsed snippet, expand/collapse chevron, and quick unpin button.
+  - `src/screens/Chat/GroupChatScreen.tsx`: Complete group chat room.
+    - Supabase Realtime WebSocket subscription on `messages`, `polls`, and `poll_votes`.
+    - Collapsible sticky `PinnedMessagesBar` at the top.
+    - Inverted `FlatList` with `KeyboardAvoidingView` for natural bottom-up chat scrolling.
+    - Automatic URL parsing inside text messages, styled in underlined `#00FFCC`, opening with `Linking.openURL()`.
+    - Inline photos with tap-to-expand fullscreen image preview modal.
+    - Inline videos with `expo-av` `Video` component and native player controls.
+    - Animated GIFs via Giphy integration.
+    - Voice notes recorded via `Audio.Recording` with live timer, cancel/send controls, and uploaded to `chat-media`.
+    - Document attachment picker via `expo-document-picker` rendering file cards with name, size, and open link.
+    - Sliding-window rate limit burst detection (5 msgs in 5s) and duplicate spam protection.
+    - Account mute & suspension check disabling inputs and showing alert banner.
+    - Long-press context menu on all message bubbles.
+  - `src/screens/ChatScreen.tsx`: Wired to render `GroupChatScreen`.
   - **`npx tsc --noEmit` → 0 errors ✅**
