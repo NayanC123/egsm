@@ -18,7 +18,7 @@ import type { UserRole } from '../types/database';
 
 import ChatScreen from '../screens/ChatScreen';
 import PostsScreen from '../screens/PostsScreen';
-import AccountSettingsScreen from '../screens/AccountSettingsScreen';
+import AccountSettingsScreen from '../screens/Settings/AccountSettingsScreen';
 import AdminScreen from '../screens/AdminScreen';
 
 /* ------------------------------------------------------------------ */

@@ -43,7 +43,7 @@
 egsm/
 ├── .env.example                          # Required env vars template
 ├── app.json                              # Expo native config (Android pkg, iOS bundle ID, permissions, plugins)
-├── App.tsx                               # Root component → ThemeProvider → NavigationContainer → AppNavigator
+├── App.tsx                               # Root component → ThemeProvider → AuthProvider → LoginScreen / AppNavigator
 ├── index.ts                              # Expo entry point (registerRootComponent)
 ├── package.json                          # Dependencies & scripts
 ├── tsconfig.json                         # Extends expo/tsconfig.base, strict: true
@@ -57,6 +57,8 @@ egsm/
 ├── supabase/
 │   └── schema.sql                        # Complete PostgreSQL schema, triggers, functions, storage, seed data
 └── src/
+    ├── context/
+    │   └── AuthContext.tsx               # AuthProvider, useAuth (custom profiles auth, realtime status, secure session)
     ├── services/
     │   └── supabase.ts                   # Supabase client init (expo-secure-store adapter, URL polyfill)
     ├── theme/
@@ -69,9 +71,13 @@ egsm/
     ├── navigation/
     │   └── AppNavigator.tsx              # MainTabParamList, AppNavigator (bottom tabs)
     └── screens/
+        ├── Auth/
+        │   └── LoginScreen.tsx           # Pre-login auth screen (no signup, forgot-password modal)
+        ├── Settings/
+        │   └── AccountSettingsScreen.tsx # Account Settings (read-only username, display name, password, theme toggle, logout)
+        ├── AccountSettingsScreen.tsx      # Backwards-compatible re-export from Settings/AccountSettingsScreen
         ├── ChatScreen.tsx                # Placeholder — Chat tab
         ├── PostsScreen.tsx               # Placeholder — Posts tab
-        ├── AccountSettingsScreen.tsx      # Placeholder — Account Settings tab
         └── AdminScreen.tsx               # Placeholder — Admin tab (conditional)
 ```
 
@@ -79,10 +85,13 @@ egsm/
 
 | File | Exports |
 |------|---------|
+| `src/context/AuthContext.tsx` | `AuthProvider` (component), `useAuth` (hook) |
 | `src/services/supabase.ts` | `supabase` (SupabaseClient instance) |
 | `src/theme/ThemeContext.tsx` | `ThemeColors` (interface), `ThemeMode` (type), `Theme` (interface), `ThemeProvider` (component), `useTheme` (hook) |
 | `src/types/database.ts` | `UserRole`, `AccountStatus`, `MuteStatus`, `OffenseReportStatus`, `PasswordResetStatus`, `AttachmentType` (type aliases); `UserProfile`, `Post`, `PostRating`, `ChatMessage`, `Poll`, `PollOption`, `OffenseReport`, `PasswordResetRequest` (interfaces) |
 | `src/navigation/AppNavigator.tsx` | `MainTabParamList` (type), `AppNavigator` (component, props: `{ userRole: UserRole }`) |
+| `src/screens/Auth/LoginScreen.tsx` | `LoginScreen` (default export) |
+| `src/screens/Settings/AccountSettingsScreen.tsx` | `AccountSettingsScreen` (default export) |
 | `src/screens/*.tsx` | `ChatScreen`, `PostsScreen`, `AccountSettingsScreen`, `AdminScreen` (default exports) |
 
 ## 5. Supabase Schema & Buckets Reference
@@ -145,4 +154,11 @@ Tables added to `supabase_realtime` publication: `messages`, `posts`, `post_rati
   - `src/services/supabase.ts`: Singleton client with `expo-secure-store` adapter and `react-native-url-polyfill`.
   - `.env.example`: `EXPO_PUBLIC_SUPABASE_URL`, `EXPO_PUBLIC_SUPABASE_ANON_KEY`, `EXPO_PUBLIC_GIPHY_API_KEY`.
   - Dependencies added: `@supabase/supabase-js`, `react-native-url-polyfill`.
+  - **`npx tsc --noEmit` → 0 errors ✅**
+- **[Phase 3 — Complete]**: Pre-Login Auth, Suspension/Termination Enforcement & Account Settings.
+  - `src/context/AuthContext.tsx`: Authenticates directly against `profiles` table using username and password_hash. Checks account status on login and establishes live Supabase Realtime subscription on the user's `profiles` row (`id=eq.${userId}`). Immediately forces logout and displays alert on `terminated` status, and blocks login / forces logout displaying exact expiration date/time on active `suspended` status. Persists user session via `expo-secure-store`.
+  - `src/screens/Auth/LoginScreen.tsx`: Clean, high-contrast mobile UI with palette `#050A0E`, `#00FFCC`, `#FF6600`. Username + Password login with loading states. Strict rule enforced: zero "Sign Up" or "Create Account" options, with subtitle "Accounts are provisioned exclusively by Administrators." "Forgot Password?" button opens native Modal to submit requests into `password_reset_requests` table notifying admins.
+  - `src/screens/Settings/AccountSettingsScreen.tsx`: Displays read-only `Username` with lock indicator (🔒 "Set by Administrators"). Allows updating `Display Name` (`profiles.display_name`) with instant context refresh. Allows updating `Password` requiring current password verification before updating `profiles.password_hash`. Includes Dark Mode / Light Mode toggle switch wired to `ThemeContext`, and high-contrast styled `Log Out` button (`#FF6600`).
+  - `App.tsx`: Wired `AuthProvider` at root, rendering loading indicator while hydrating session, `LoginScreen` for unauthenticated state, and `AppNavigator` with user role once authenticated.
+  - `AppNavigator.tsx`: Connected Account Settings tab directly to `src/screens/Settings/AccountSettingsScreen.tsx`.
   - **`npx tsc --noEmit` → 0 errors ✅**

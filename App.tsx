@@ -10,25 +10,49 @@
  */
 
 import React from 'react';
+import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { NavigationContainer } from '@react-navigation/native';
 import { ThemeProvider, useTheme } from './src/theme/ThemeContext';
+import { AuthProvider, useAuth } from './src/context/AuthContext';
 import AppNavigator from './src/navigation/AppNavigator';
+import LoginScreen from './src/screens/Auth/LoginScreen';
 
 /* ------------------------------------------------------------------ */
-/*  Inner shell (needs ThemeContext)                                    */
+/*  Inner shell (needs ThemeContext & AuthContext)                    */
 /* ------------------------------------------------------------------ */
 
 const AppShell: React.FC = () => {
   const { theme } = useTheme();
+  const { user, isLoading } = useAuth();
 
-  // TODO Phase 2: replace with actual authenticated user role
-  const userRole = 'admin' as const;
+  if (isLoading) {
+    return (
+      <View
+        style={[
+          styles.loadingContainer,
+          { backgroundColor: theme.colors.main },
+        ]}
+      >
+        <StatusBar style={theme.mode === 'dark' ? 'light' : 'dark'} />
+        <ActivityIndicator size="large" color={theme.colors.primary} />
+      </View>
+    );
+  }
+
+  if (!user) {
+    return (
+      <>
+        <StatusBar style={theme.mode === 'dark' ? 'light' : 'dark'} />
+        <LoginScreen />
+      </>
+    );
+  }
 
   return (
     <NavigationContainer>
       <StatusBar style={theme.mode === 'dark' ? 'light' : 'dark'} />
-      <AppNavigator userRole={userRole} />
+      <AppNavigator userRole={user.role} />
     </NavigationContainer>
   );
 };
@@ -40,7 +64,18 @@ const AppShell: React.FC = () => {
 export default function App() {
   return (
     <ThemeProvider>
-      <AppShell />
+      <AuthProvider>
+        <AppShell />
+      </AuthProvider>
     </ThemeProvider>
   );
 }
+
+const styles = StyleSheet.create({
+  loadingContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+});
+
