@@ -14,6 +14,11 @@
       },
       "ios": {
         "simulator": true
+      },
+      "env": {
+        "EXPO_PUBLIC_SUPABASE_URL": "https://llkxyzuigignxdstmyxd.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "sb_publishable_bydJi44VbEsIschzzvXnpA_qOZD5fP9",
+        "EXPO_PUBLIC_GIPHY_API_KEY": "NwxGymxY87aUFw1C8uCw2SlnkdVSJJOG"
       }
     },
     "production": {
@@ -22,6 +27,11 @@
       },
       "ios": {
         "simulator": false
+      },
+      "env": {
+        "EXPO_PUBLIC_SUPABASE_URL": "https://llkxyzuigignxdstmyxd.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "sb_publishable_bydJi44VbEsIschzzvXnpA_qOZD5fP9",
+        "EXPO_PUBLIC_GIPHY_API_KEY": "NwxGymxY87aUFw1C8uCw2SlnkdVSJJOG"
       }
     }
   },

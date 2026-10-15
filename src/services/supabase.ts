@@ -12,10 +12,12 @@ import 'react-native-url-polyfill/auto';
 import { createClient } from '@supabase/supabase-js';
 import * as SecureStore from 'expo-secure-store';
 
-/* ---------- Env variables (set in .env / EAS secrets) ---------- */
-
-const SUPABASE_URL  = process.env.EXPO_PUBLIC_SUPABASE_URL  ?? '';
-const SUPABASE_ANON = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ?? '';
+const SUPABASE_URL =
+  process.env.EXPO_PUBLIC_SUPABASE_URL ||
+  'https://llkxyzuigignxdstmyxd.supabase.co';
+const SUPABASE_ANON =
+  process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ||
+  'sb_publishable_bydJi44VbEsIschzzvXnpA_qOZD5fP9';
 
 /* ---------- Secure-store backed storage adapter ---------- */
 

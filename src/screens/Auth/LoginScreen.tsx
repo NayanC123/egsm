@@ -110,7 +110,7 @@ const LoginScreen: React.FC = () => {
       >
         {/* ── Brand ── */}
         <View style={styles.brandContainer}>
-          <Text style={[styles.brandTitle, { color: '#00FFCC' }]}>GRUUP</Text>
+          <Text style={[styles.brandTitle, { color: '#00FFCC' }]}>egsm.</Text>
           <Text style={[styles.brandSubtitle, { color: colors.muted }]}>
             Social
           </Text>
@@ -177,6 +177,7 @@ const LoginScreen: React.FC = () => {
         {/* ── Footer notice ── */}
         <Text style={[styles.footerNotice, { color: colors.muted }]}>
           Accounts are provisioned exclusively by Administrators.
+          Contact Admin in case of forgotten username or password.
         </Text>
 
         {/* ── Creator Attribution ── */}
