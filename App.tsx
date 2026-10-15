@@ -10,7 +10,7 @@
  */
 
 import React from 'react';
-import { ActivityIndicator, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { NavigationContainer } from '@react-navigation/native';
@@ -58,6 +58,57 @@ const AppShell: React.FC = () => {
   );
 };
 
+interface ErrorBoundaryState {
+  hasError: boolean;
+  error: Error | null;
+}
+
+class RootErrorBoundary extends React.Component<
+  { children: React.ReactNode },
+  ErrorBoundaryState
+> {
+  state: ErrorBoundaryState = { hasError: false, error: null };
+
+  static getDerivedStateFromError(error: Error): ErrorBoundaryState {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    console.error('App Root Error:', error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <View
+          style={{
+            flex: 1,
+            backgroundColor: '#050A0E',
+            justifyContent: 'center',
+            alignItems: 'center',
+            padding: 24,
+          }}
+        >
+          <Text
+            style={{
+              color: '#FF3366',
+              fontSize: 20,
+              fontWeight: 'bold',
+              marginBottom: 12,
+            }}
+          >
+            App Error Encountered
+          </Text>
+          <Text style={{ color: '#FFFFFF', fontSize: 14, textAlign: 'center' }}>
+            {this.state.error?.message || 'An unexpected error occurred.'}
+          </Text>
+        </View>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 /* ------------------------------------------------------------------ */
 /*  Root export                                                        */
 /* ------------------------------------------------------------------ */
@@ -65,11 +116,13 @@ const AppShell: React.FC = () => {
 export default function App() {
   return (
     <SafeAreaProvider>
-      <ThemeProvider>
-        <AuthProvider>
-          <AppShell />
-        </AuthProvider>
-      </ThemeProvider>
+      <RootErrorBoundary>
+        <ThemeProvider>
+          <AuthProvider>
+            <AppShell />
+          </AuthProvider>
+        </ThemeProvider>
+      </RootErrorBoundary>
     </SafeAreaProvider>
   );
 }
